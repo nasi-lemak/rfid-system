@@ -120,11 +120,25 @@ same unit of work so alerts are transactional with the event.
    verticals need none.
 3. (Optional) add a mobile "workflow" screen that pre-fills an operation.
 
-## 6. Roadmap (post v1)
-- LLRP / Impinj / Zebra IoT Connector bridges and MQTT ingestion.
-- Location engine for active RFID / BLE / UWB (RSSI trilateration, zone
-  presence with dwell), used by personnel / muster / race-timing verticals.
-- ERP/EAM connectors (SAP, Dynamics, Maximo) for depreciation and work orders.
-- Label/tag printing & encoding service (ZPL, GS1 SGTIN/GRAI/GIAI encoders — the
-  GS1 EPC helpers are already in `Rfid.Domain/Epc`).
-- Report builder, scheduled stocktakes, SLA dashboards.
+## 6. Background services & integration (v1.1)
+
+| Component | Role |
+|---|---|
+| `IngestAdapters` + `VendorIngestController` | Normalise Impinj IoT Interface / Zebra IoT Connector / generic JSON into `ReadBatchRequest` |
+| `MqttIngestService` | Subscribes to the broker, matches topics to devices (`Config.mqttTopic`), feeds the same pipeline |
+| `PresenceService` + `PresenceSweeperService` | Zone sessions (enter/refresh/exit with dwell timeout), occupancy, muster, checkpoint timing |
+| `IntegrationService` + `IntegrationDispatcherService` | Cursor-based signed delivery of events/alerts to external endpoints with back-off |
+| `StocktakeScheduleService` + `StocktakeSchedulerService` | Opens scheduled stocktakes, auto-reconciles after a window |
+| `ReportService` | 12 cross-vertical reports (JSON/CSV) incl. depreciation |
+| `LabelService` + `RawPrinterClient` | ZPL rendering with RFID encode; raw 9100 printing |
+| `Gs1` | GRAI-96 / GIAI-96 encoders next to SGTIN-96 |
+| `TemplateProvisioner.ExportAsync/ApplyDefinitionAsync` | Per-tenant template export/import |
+
+Background jobs run per tenant inside an ambient scope (`AmbientContext`), so the same tenant-filtered
+`DbContext` and services are used in requests and jobs alike.
+
+## 7. Roadmap
+- Native LLRP client for readers without an HTTP/MQTT interface.
+- UWB / BLE trilateration for x/y positioning inside a zone (presence today is zone-level).
+- Vendor-specific ERP adapters (SAP, Dynamics, Maximo) layered on the integration endpoint.
+- Label designer UI and printing from the handheld.

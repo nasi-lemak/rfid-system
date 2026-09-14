@@ -46,7 +46,7 @@ public static class SeedData
             await using var db = new AppDbContext(options, ctx);
             var resolver = new TagResolver(db);
             var rules = new RuleEngine(db, ctx, new NullLivePublisher(), new NullWebhookDispatcher());
-            var seeder = new DemoSeeder(db, ctx, new TemplateProvisioner(db, ctx), new OperationProcessor(db, ctx, resolver, rules, new NullLivePublisher()), new ReadIngestionService(db, ctx, resolver, rules, new NullLivePublisher()), rules);
+            var seeder = new DemoSeeder(db, ctx, new TemplateProvisioner(db, ctx), new OperationProcessor(db, ctx, resolver, rules, new NullLivePublisher()), new ReadIngestionService(db, ctx, resolver, rules, new NullLivePublisher(), new PresenceService(db, ctx, rules, new NullLivePublisher())), rules);
             try { results.Add(await seeder.SeedAsync(sc, ct)); }
             catch (Exception ex) { results.Add(new SeedResult { Scenario = sc.Template, Warnings = { "FAILED: " + (ex.InnerException?.Message ?? ex.Message) } }); }
         }

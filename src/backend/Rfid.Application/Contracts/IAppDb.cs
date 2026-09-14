@@ -23,6 +23,9 @@ public interface IAppDb
     DbSet<Rule> Rules { get; }
     DbSet<Alert> Alerts { get; }
     DbSet<SolutionTemplate> SolutionTemplates { get; }
+    DbSet<PresenceSession> PresenceSessions { get; }
+    DbSet<StocktakeSchedule> StocktakeSchedules { get; }
+    DbSet<IntegrationEndpoint> IntegrationEndpoints { get; }
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }
 

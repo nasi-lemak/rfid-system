@@ -34,7 +34,7 @@ public class TestHost
         Rules = new RuleEngine(Db, Ctx, new NullLivePublisher(), new NullWebhookDispatcher());
         Ops = new OperationProcessor(Db, Ctx, resolver, Rules, new NullLivePublisher());
         Stocktakes = new StocktakeService(Db, Ctx, resolver, Rules);
-        Ingest = new ReadIngestionService(Db, Ctx, resolver, Rules, new NullLivePublisher());
+        Ingest = new ReadIngestionService(Db, Ctx, resolver, Rules, new NullLivePublisher(), new PresenceService(Db, Ctx, Rules, new NullLivePublisher()));
         Templates = new TemplateProvisioner(Db, Ctx);
     }
 

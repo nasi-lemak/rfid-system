@@ -37,15 +37,6 @@ public class JwtService
     }
 }
 
-public class HttpCurrentContext : Rfid.Application.Contracts.ICurrentContext
-{
-    private readonly ClaimsPrincipal? _user;
-    public HttpCurrentContext(IHttpContextAccessor accessor) => _user = accessor.HttpContext?.User;
-    public Guid TenantId => Guid.TryParse(_user?.FindFirst("tenant")?.Value, out var g) ? g : Guid.Empty;
-    public Guid? UserId => Guid.TryParse(_user?.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var g) ? g : null;
-    public Guid? DeviceId => Guid.TryParse(_user?.FindFirst("device")?.Value, out var g) ? g : null;
-}
-
 public class ErrorHandlingMiddleware
 {
     private readonly RequestDelegate _next;

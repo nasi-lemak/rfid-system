@@ -90,8 +90,23 @@ operations (all types, pickers, per-line results), commission (read/encode EPC, 
 settings (reader driver, RF power, current location, offline queue sync). Vendor SDK integration
 notes in [`docs/HANDHELD-SDK.md`](docs/HANDHELD-SDK.md).
 
+## Integration & operations (v1.1)
+
+See [`docs/INTEGRATION.md`](docs/INTEGRATION.md).
+
+- **Reader bridges**: Impinj IoT Interface and Zebra IoT Connector payloads accepted natively
+  (`/api/ingest/impinj`, `/api/ingest/zebra`), generic JSON, and an **MQTT** subscriber that routes
+  topics to devices.
+- **Presence engine** for active RFID / BLE / UWB: zone sessions with dwell timeouts, best-RSSI zone
+  resolution, live occupancy, **muster roll-call** and **checkpoint timing** (race / process gates).
+- **Integrations**: cursor-based, HMAC-signed, retried delivery of events and alerts to ERP/EAM/BI;
+  pull-style CSV/JSON **reports** (12) incl. a fixed-asset depreciation register.
+- **Labels & encoding**: ZPL generation with RFID encode, raw-TCP printing to printer devices,
+  SGTIN-96 / GRAI-96 / GIAI-96 encoders.
+- **Scheduled stocktakes** with auto-reconcile, run by a background service.
+- **Template export / import** for per-tenant customisation.
+
 ## Roadmap
 
-LLRP / Zebra IoT Connector / Impinj bridges and MQTT ingestion · active RFID / BLE / UWB location
-engine (dwell, trilateration) · ERP/EAM connectors (depreciation, work orders) · label printing &
-encoding service · scheduled stocktakes & report builder · per-tenant template customisation UI.
+Native LLRP client · UWB/BLE trilateration (x/y positioning inside zones) · SAP / Dynamics / Maximo
+adapters on top of the integration endpoint · label designer UI · mobile printing from the handheld.

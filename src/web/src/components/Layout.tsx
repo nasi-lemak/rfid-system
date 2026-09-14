@@ -4,9 +4,9 @@ import { useLive } from '../live';
 import { useAlerts } from '../api/hooks';
 
 const groups: { title: string; links: { to: string; label: string; admin?: boolean }[] }[] = [
-  { title: 'Overview', links: [{ to: '/', label: 'Dashboard' }, { to: '/live', label: 'Live reads' }, { to: '/alerts', label: 'Alerts' }, { to: '/events', label: 'Event log' }] },
+  { title: 'Overview', links: [{ to: '/', label: 'Dashboard' }, { to: '/live', label: 'Live reads' }, { to: '/alerts', label: 'Alerts' }, { to: '/presence', label: 'Presence & location' }, { to: '/events', label: 'Event log' }, { to: '/reports', label: 'Reports' }] },
   { title: 'Track', links: [{ to: '/items', label: 'Items' }, { to: '/tags', label: 'Tags' }, { to: '/operations', label: 'Operations' }, { to: '/stocktakes', label: 'Stocktakes' }] },
-  { title: 'Configure', links: [{ to: '/item-types', label: 'Item types' }, { to: '/locations', label: 'Locations' }, { to: '/parties', label: 'Parties' }, { to: '/devices', label: 'Readers & devices' }, { to: '/rules', label: 'Rules' }, { to: '/templates', label: 'Solution templates' }, { to: '/users', label: 'Users', admin: true }] },
+  { title: 'Configure', links: [{ to: '/item-types', label: 'Item types' }, { to: '/locations', label: 'Locations' }, { to: '/parties', label: 'Parties' }, { to: '/devices', label: 'Readers & devices' }, { to: '/rules', label: 'Rules' }, { to: '/templates', label: 'Solution templates' }, { to: '/integrations', label: 'Integrations', admin: true }, { to: '/users', label: 'Users', admin: true }] },
 ];
 
 export default function Layout() {

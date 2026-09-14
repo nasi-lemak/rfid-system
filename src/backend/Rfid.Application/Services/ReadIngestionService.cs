@@ -16,13 +16,14 @@ public class ReadIngestionService
     private readonly TagResolver _tags;
     private readonly RuleEngine _rules;
     private readonly ILivePublisher _live;
+    private readonly PresenceService? _presence;
 
     /// <summary>Repeated reads of the same item at the same location inside this window do not produce events.</summary>
     public TimeSpan Debounce { get; set; } = TimeSpan.FromSeconds(30);
 
-    public ReadIngestionService(IAppDb db, ICurrentContext ctx, TagResolver tags, RuleEngine rules, ILivePublisher live)
+    public ReadIngestionService(IAppDb db, ICurrentContext ctx, TagResolver tags, RuleEngine rules, ILivePublisher live, PresenceService? presence = null)
     {
-        _db = db; _ctx = ctx; _tags = tags; _rules = rules; _live = live;
+        _db = db; _ctx = ctx; _tags = tags; _rules = rules; _live = live; _presence = presence;
     }
 
     public async Task<IngestResult> IngestAsync(ReadBatchRequest batch, ReadSource source, CancellationToken ct = default)
@@ -40,8 +41,11 @@ public class ReadIngestionService
         var live = new List<LiveRead>();
         var seenThisBatch = new HashSet<(Guid, Guid?)>();
 
-        // Keep the latest read per EPC+antenna to avoid hammering the DB with duplicates from a single batch.
-        foreach (var r in batch.Reads.GroupBy(x => (TagResolver.Normalize(x.Epc), x.AntennaPort)).Select(g => g.OrderByDescending(x => x.ReadAt).First()))
+        // Keep the latest read per EPC+antenna to avoid hammering the DB with duplicates from a single batch,
+        // and process the strongest read of each EPC first so that, when several antennas/zones see the same
+        // tag, the best-RSSI zone wins ("nearest reader" location resolution for active/BLE/ceiling readers).
+        foreach (var r in batch.Reads.GroupBy(x => (TagResolver.Normalize(x.Epc), x.AntennaPort)).Select(g => g.OrderByDescending(x => x.ReadAt).First())
+                     .OrderBy(x => TagResolver.Normalize(x.Epc)).ThenByDescending(x => x.Rssi ?? double.MinValue))
         {
             var epc = TagResolver.Normalize(r.Epc);
             var at = r.ReadAt?.ToUniversalTime() ?? DateTime.UtcNow;
@@ -60,7 +64,9 @@ public class ReadIngestionService
 
             if (item == null) { result.Unknown++; continue; }
             result.Resolved++;
-            if (!seenThisBatch.Add((item.Id, location?.Id))) continue;
+            if (seenThisBatch.Any(x => x.Item1 == item.Id)) continue; // a stronger antenna already placed this item
+            seenThisBatch.Add((item.Id, location?.Id));
+            if (location != null && _presence != null && direction != AntennaDirection.Out) await _presence.TrackAsync(item, location, device?.Id, r.Rssi, at, ct);
 
             var debounced = item.LastSeenAt.HasValue && item.LastSeenLocationId == location?.Id && at - item.LastSeenAt.Value < Debounce
                             && direction == AntennaDirection.None;

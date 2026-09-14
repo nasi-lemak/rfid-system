@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { useItem, useItemEvents, useLocations, useParties } from '../api/hooks';
+import { useDevices, useItem, useItemEvents, useLocations, useParties } from '../api/hooks';
+import { get } from '../api/client';
 import { post } from '../api/client';
 import { Badge, ErrorBox, LifecycleView, Modal, fmt, toneForStatus } from '../components/ui';
 import { OperationForm } from '../components/OperationForm';
@@ -14,6 +15,12 @@ export default function ItemDetail() {
   const [op, setOp] = useState<string | null>(null);
   const [bindEpc, setBindEpc] = useState<string | null>(null);
   const [bindErr, setBindErr] = useState<unknown>(null);
+  const devices = useDevices();
+  const printers = devices.data?.filter((d) => d.kind === 'Printer') ?? [];
+  const [zpl, setZpl] = useState<string | null>(null);
+  const [printMsg, setPrintMsg] = useState<string | null>(null);
+  const showLabel = async () => { try { setZpl(await get<string>(`/api/labels/items/${id}`)); } catch (e) { setZpl((e as Error).message); } };
+  const print = async (printerId: string) => { const r = await post<{ ok: boolean; error?: string }[]>('/api/labels/print', { itemIds: [id], printerDeviceId: printerId }); setPrintMsg(r[0]?.ok ? 'Label sent to printer' : `Print failed: ${r[0]?.error}`); };
   if (error) return <ErrorBox error={error} />;
   if (!data) return <div className="muted">Loading…</div>;
   const i = data.item;
@@ -54,6 +61,9 @@ export default function ItemDetail() {
           {i.tags.length === 0 && <div className="muted">No tag bound. Commission from a handheld or bind an EPC below.</div>}
           <div className="row" style={{ marginTop: 8 }}><input className="mono" placeholder="EPC hex" value={bindEpc ?? ''} onChange={(e) => setBindEpc(e.target.value)} /><button className="sm" disabled={!bindEpc} onClick={bind}>Bind</button></div>
           <ErrorBox error={bindErr} />
+          <div className="row" style={{ marginTop: 8 }}><button className="sm" disabled={i.tags.length === 0} onClick={showLabel}>Label (ZPL)</button>{printers.map((p) => <button key={p.id} className="sm" disabled={i.tags.length === 0} onClick={() => print(p.id)}>🖨 {p.name}</button>)}{printers.length === 0 && <span className="muted small">add a Printer device to print</span>}</div>
+          {printMsg && <div className="small muted">{printMsg}</div>}
+          {zpl && <pre className="mono small" style={{ whiteSpace: 'pre-wrap', maxHeight: 160, overflow: 'auto', background: 'var(--bg)', padding: 8, borderRadius: 6 }}>{zpl}</pre>}
           <h3 style={{ marginTop: 16 }}>Attributes</h3>
           <dl className="kv">{Object.entries(i.attributes ?? {}).map(([k, v]) => <><dt key={k + 'k'}>{k}</dt><dd key={k + 'v'}>{String(v ?? '')}</dd></>)}</dl>
           {Object.keys(i.attributes ?? {}).length === 0 && <span className="muted">None</span>}

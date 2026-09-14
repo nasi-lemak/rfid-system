@@ -20,6 +20,10 @@ public class ItemType : TenantEntity
     public LifecycleDefinition? Lifecycle { get; set; }
     public string? ImageUrl { get; set; }
     public string? Vertical { get; set; }
+    /// <summary>Straight-line depreciation horizon for fixed-asset reporting.</summary>
+    public int? UsefulLifeMonths { get; set; }
+    /// <summary>Optional ZPL label template; placeholders {name} {identifier} {epc} {type} {location} {attributes.x}.</summary>
+    public string? LabelTemplate { get; set; }
 }
 
 public class AttributeDefinition

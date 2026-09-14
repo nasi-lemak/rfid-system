@@ -33,7 +33,7 @@ builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.WithOrigins(cfg.GetSecti
 builder.Services.AddDbContext<AppDbContext>(o => o.UseNpgsql(cfg.GetConnectionString("Default")));
 builder.Services.AddScoped<IAppDb>(sp => sp.GetRequiredService<AppDbContext>());
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddScoped<ICurrentContext, HttpCurrentContext>();
+builder.Services.AddScoped<ICurrentContext, RequestOrAmbientContext>();
 builder.Services.AddScoped<ILivePublisher, SignalRLivePublisher>();
 builder.Services.AddHttpClient<IWebhookDispatcher, HttpWebhookDispatcher>();
 builder.Services.AddScoped<TagResolver>();
@@ -42,6 +42,16 @@ builder.Services.AddScoped<OperationProcessor>();
 builder.Services.AddScoped<StocktakeService>();
 builder.Services.AddScoped<ReadIngestionService>();
 builder.Services.AddScoped<TemplateProvisioner>();
+builder.Services.AddScoped<PresenceService>();
+builder.Services.AddScoped<ReportService>();
+builder.Services.AddScoped<StocktakeScheduleService>();
+builder.Services.AddScoped<IntegrationService>();
+builder.Services.AddHttpClient<IIntegrationTransport, Rfid.Api.Background.HttpIntegrationTransport>();
+builder.Services.AddSingleton<Rfid.Api.Background.IPrinterClient, Rfid.Api.Background.RawPrinterClient>();
+builder.Services.AddHostedService<Rfid.Api.Background.PresenceSweeperService>();
+builder.Services.AddHostedService<Rfid.Api.Background.StocktakeSchedulerService>();
+builder.Services.AddHostedService<Rfid.Api.Background.IntegrationDispatcherService>();
+builder.Services.AddHostedService<Rfid.Api.Background.MqttIngestService>();
 builder.Services.AddScoped<Rfid.Infrastructure.Persistence.Demo.DemoSeeder>();
 builder.Services.AddSingleton<JwtService>();
 

@@ -25,6 +25,7 @@ export async function api<T = unknown>(path: string, init: RequestInit & { json?
   }
   if (res.status === 204) return undefined as T;
   const text = await res.text();
+  if (!res.headers.get('content-type')?.includes('json')) return text as unknown as T;
   return (text ? JSON.parse(text) : undefined) as T;
 }
 

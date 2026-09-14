@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Rfid.Application.Contracts;
+using Rfid.Domain;
 using Rfid.Domain.Entities;
 
 namespace Rfid.Application.Templates;
@@ -24,6 +25,25 @@ public class TemplateProvisioner
         var tpl = await _db.SolutionTemplates.FirstOrDefaultAsync(t => t.Code == templateCode, ct)
                   ?? SolutionTemplateCatalog.All.FirstOrDefault(t => t.Code == templateCode)
                   ?? throw new NotFoundException($"Template {templateCode}");
+        return await ApplyDefinitionAsync(tpl.Code, tpl.Vertical, tpl.Definition, ct);
+    }
+
+    /// <summary>Exports the tenant's current item types and rules as a template definition (for backup, copying to another tenant, or contributing a new vertical).</summary>
+    public async Task<TemplateDefinition> ExportAsync(CancellationToken ct = default)
+    {
+        var types = await _db.ItemTypes.OrderBy(t => t.Name).ToListAsync(ct);
+        var rules = await _db.Rules.OrderBy(r => r.Name).ToListAsync(ct);
+        return new TemplateDefinition
+        {
+            ItemTypes = types.Select(t => new ItemType { Name = t.Name, Code = t.Code, Category = t.Category, IsContainer = t.IsContainer, TracksExpiry = t.TracksExpiry, TracksCycles = t.TracksCycles, MaxCycles = t.MaxCycles, RequiresInspection = t.RequiresInspection, InspectionIntervalDays = t.InspectionIntervalDays, ReorderPoint = t.ReorderPoint, Unit = t.Unit, AttributeSchema = t.AttributeSchema, Lifecycle = t.Lifecycle, UsefulLifeMonths = t.UsefulLifeMonths, LabelTemplate = t.LabelTemplate, Vertical = t.Vertical }).ToList(),
+            Rules = rules.Select(r => new Rule { Name = r.Name, Enabled = r.Enabled, Trigger = r.Trigger, Conditions = r.Conditions, Action = r.Action, Params = r.Params, Severity = r.Severity }).ToList(),
+            Operations = Enum.GetValues<OperationType>().ToList(),
+        };
+    }
+
+    public async Task<ProvisionResult> ApplyDefinitionAsync(string code, string vertical, TemplateDefinition definition, CancellationToken ct = default)
+    {
+        var tpl = new SolutionTemplate { Code = code, Vertical = vertical, Definition = definition };
         var result = new ProvisionResult { Template = tpl.Code };
         var existingTypes = await _db.ItemTypes.Select(t => t.Code).ToListAsync(ct);
         foreach (var it in tpl.Definition.ItemTypes)
@@ -35,7 +55,7 @@ public class TemplateProvisioner
                 TracksExpiry = it.TracksExpiry, TracksCycles = it.TracksCycles, MaxCycles = it.MaxCycles,
                 RequiresInspection = it.RequiresInspection, InspectionIntervalDays = it.InspectionIntervalDays,
                 ReorderPoint = it.ReorderPoint, Unit = it.Unit, AttributeSchema = it.AttributeSchema, Lifecycle = it.Lifecycle,
-                Vertical = tpl.Vertical,
+                UsefulLifeMonths = it.UsefulLifeMonths, LabelTemplate = it.LabelTemplate, Vertical = tpl.Vertical,
             });
             result.ItemTypesCreated++;
         }

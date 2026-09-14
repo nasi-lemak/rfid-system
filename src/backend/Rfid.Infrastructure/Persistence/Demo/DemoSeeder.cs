@@ -151,7 +151,9 @@ public class DemoSeeder
         }
 
         // Background read traffic over the last 14 days so dashboards have shape (no events, raw sightings only).
-        var fixedDevices = devices.Values.Where(d => d.Antennas.Count > 0).ToList();
+        // Background noise must not touch timing mats / muster points – those reads carry meaning.
+        var noiseKinds = new[] { LocationKind.Checkpoint, LocationKind.MusterPoint };
+        var fixedDevices = devices.Values.Where(d => d.Antennas.Any(a => a.LocationId.HasValue && !noiseKinds.Contains(locs.Values.First(l => l.Id == a.LocationId).Kind))).ToList();
         if (fixedDevices.Count > 0)
         {
             var rnd = new System.Random(sc.SiteCode.GetHashCode(StringComparison.Ordinal));
@@ -161,7 +163,8 @@ public class DemoSeeder
                 var n = 3 + rnd.Next(6);
                 for (var k = 0; k < n && pool.Count > 0; k++)
                 {
-                    var it = pool[rnd.Next(pool.Count)]; var dev = fixedDevices[rnd.Next(fixedDevices.Count)]; var ant = dev.Antennas[rnd.Next(dev.Antennas.Count)];
+                    var it = pool[rnd.Next(pool.Count)]; var dev = fixedDevices[rnd.Next(fixedDevices.Count)];
+                    var okAnts = dev.Antennas.Where(a => a.LocationId.HasValue && !noiseKinds.Contains(locs.Values.First(l => l.Id == a.LocationId).Kind)).ToList(); var ant = okAnts[rnd.Next(okAnts.Count)];
                     _db.TagReads.Add(new TagRead { TenantId = tenant, Epc = epcByItem[it.Id], ItemId = it.Id, DeviceId = dev.Id, AntennaPort = ant.Port, Rssi = -45 - rnd.Next(30), ReadAt = now.AddDays(-day).AddMinutes(rnd.Next(600)), LocationId = ant.LocationId, Source = ReadSource.Fixed, SessionId = "seed-background" });
                     result.Reads++;
                 }

@@ -19,6 +19,9 @@ import Templates from './pages/Templates';
 import Tags from './pages/Tags';
 import Events from './pages/Events';
 import Users from './pages/Users';
+import Presence from './pages/Presence';
+import Reports from './pages/Reports';
+import Integrations from './pages/Integrations';
 
 export default function App() {
   const { user } = useAuth();
@@ -43,6 +46,9 @@ export default function App() {
         <Route path="tags" element={<Tags />} />
         <Route path="templates" element={<Templates />} />
         <Route path="users" element={<Users />} />
+        <Route path="presence" element={<Presence />} />
+        <Route path="reports" element={<Reports />} />
+        <Route path="integrations" element={<Integrations />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

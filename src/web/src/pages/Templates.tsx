@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { get, post } from '../api/client';
 import { useApplyTemplate, useSeedDemo, useTemplates } from '../api/hooks';
 import { Badge, ErrorBox } from '../components/ui';
 
@@ -7,6 +8,9 @@ export default function Templates() {
   const apply = useApplyTemplate();
   const seed = useSeedDemo();
   const [msg, setMsg] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const exportCfg = async () => { const d = await get<unknown>('/api/templates/export'); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' })); a.download = 'rfid-template-export.json'; a.click(); URL.revokeObjectURL(a.href); };
+  const importCfg = async (f: File) => { try { const j = JSON.parse(await f.text()); const r = await post<{ itemTypesCreated: number; rulesCreated: number; skipped: number }>('/api/templates/import', { code: j.code, vertical: j.vertical, definition: j.definition ?? j }); setMsg(`Imported ${r.itemTypesCreated} item types and ${r.rulesCreated} rules (${r.skipped} skipped).`); } catch (e) { setMsg(`Import failed: ${(e as Error).message}`); } };
   const run = async (code: string) => { const r = await apply.mutateAsync(code); setMsg(`${code}: ${r.itemTypesCreated} item types and ${r.rulesCreated} rules installed (${r.skipped} already present).`); };
   const demo = async (code: string) => {
     const r = await seed.mutateAsync(code);
@@ -14,7 +18,7 @@ export default function Templates() {
   };
   return (
     <div>
-      <div className="topbar"><h1>Solution templates</h1></div>
+      <div className="topbar"><h1>Solution templates</h1><div className="row"><button onClick={exportCfg} title="Download this tenant's item types and rules as a template JSON">Export configuration</button><button onClick={() => fileRef.current?.click()}>Import template JSON</button><input ref={fileRef} type="file" accept="application/json" hidden onChange={(e) => e.target.files?.[0] && importCfg(e.target.files[0])} /></div></div>
       <p className="muted small">A template installs the item types, lifecycles and rules for a vertical. Everything is editable afterwards, and several templates can be combined in one tenant (e.g. a hospital running linen + medical assets + surgical instruments). <b>Load demo data</b> adds a realistic site for that vertical – locations, parties, tagged items, readers and a few days of history – so you can explore the workflows immediately.</p>
       {msg && <div className="success" style={{ marginBottom: 12 }}>{msg}</div>}
       <ErrorBox error={apply.error ?? seed.error} />

@@ -24,6 +24,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Rfid.Application\Rfid.Application.csproj" />
     <ProjectReference Include="..\Rfid.Infrastructure\Rfid.Infrastructure.csproj" />
+    <ProjectReference Include="..\Rfid.Api\Rfid.Api.csproj" />
   </ItemGroup>
 
 </Project>

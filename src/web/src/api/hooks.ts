@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { del, get, post, put } from './client';
-import type { Alert, Dashboard, SeedResult, Device, Item, ItemEvent, ItemType, Location, Lookups, OperationRequest, OperationResult, OperationSummary, Paged, Party, Rule, StocktakeDetail, StocktakeListRow, StocktakeSummary, Tag, Template } from './types';
+import type { Alert, Dashboard, SeedResult, ZoneOccupancy, MusterReport, TimingRow, ReportDef, ReportResult, IntegrationEndpoint, StocktakeSchedule, Device, Item, ItemEvent, ItemType, Location, Lookups, OperationRequest, OperationResult, OperationSummary, Paged, Party, Rule, StocktakeDetail, StocktakeListRow, StocktakeSummary, Tag, Template } from './types';
 
 export const useLookups = () => useQuery({ queryKey: ['lookups'], queryFn: () => get<Lookups>('/api/lookups'), staleTime: Infinity });
 export const useDashboard = () => useQuery({ queryKey: ['dashboard'], queryFn: () => get<Dashboard>('/api/dashboard'), refetchInterval: 15000 });
@@ -62,3 +62,11 @@ export function useRemove(path: string, keys: string[]) {
   const inv = useInvalidate();
   return useMutation({ mutationFn: (id: string) => del(`${path}/${id}`), onSuccess: () => inv(...keys) });
 }
+
+export const useZones = (under?: string) => useQuery({ queryKey: ['presence-zones', under], queryFn: () => get<ZoneOccupancy[]>('/api/presence/zones', { under }), refetchInterval: 5000 });
+export const useMuster = (siteId?: string) => useQuery({ queryKey: ['muster', siteId], queryFn: () => get<MusterReport>('/api/presence/muster', { siteId }), enabled: !!siteId, refetchInterval: 5000 });
+export const useTiming = (eventLocationId?: string) => useQuery({ queryKey: ['timing', eventLocationId], queryFn: () => get<{ checkpoints: string[]; rows: TimingRow[] }>('/api/presence/timing', { eventLocationId }), enabled: !!eventLocationId, refetchInterval: 5000 });
+export const useReportCatalog = () => useQuery({ queryKey: ['reports'], queryFn: () => get<ReportDef[]>('/api/reports'), staleTime: Infinity });
+export const useReport = (code?: string, params?: Record<string, unknown>) => useQuery({ queryKey: ['report', code, params], queryFn: () => get<ReportResult>(`/api/reports/${code}`, params), enabled: !!code });
+export const useIntegrations = () => useQuery({ queryKey: ['integrations'], queryFn: () => get<IntegrationEndpoint[]>('/api/integrations'), refetchInterval: 10000 });
+export const useSchedules = () => useQuery({ queryKey: ['schedules'], queryFn: () => get<StocktakeSchedule[]>('/api/stocktake-schedules') });

@@ -53,3 +53,12 @@ export interface Dashboard {
 }
 export interface Lookups { operationTypes: string[]; locationKinds: string[]; partyKinds: string[]; deviceKinds: string[]; tagTechnologies: string[]; eventTypes: string[]; ruleActions: string[]; severities: string[]; itemStatuses: string[]; ruleFields: string[]; ruleOps: string[] }
 export interface AuthUser { id: Guid; email: string; displayName: string; role: string; tenantId: Guid; tenantName?: string }
+
+export interface PresentItem { itemId: Guid; name: string; identifier: string; itemType?: string | null; enteredAt: string; lastSeenAt: string; dwellMinutes: number; rssi?: number | null; person?: string | null }
+export interface ZoneOccupancy { locationId: Guid; location: string; kind: string; present: number; items: PresentItem[] }
+export interface MusterReport { onSite: number; accounted: number; unaccounted: number; accountedItems: PresentItem[]; unaccountedItems: PresentItem[] }
+export interface TimingRow { itemId: Guid; bib: string; athlete?: string | null; category?: string | null; checkpoints: Record<string, string | null>; elapsedSeconds?: number | null; rank: number }
+export interface ReportDef { code: string; name: string; description: string }
+export interface ReportResult { columns: string[]; rows: unknown[][]; count: number }
+export interface IntegrationEndpoint { id: Guid; name: string; url: string; hasSecret: boolean; enabled: boolean; eventTypes: string[]; includeAlerts: boolean; headers: Record<string, unknown>; batchSize: number; eventCursor: string; alertCursor: string; lastDeliveryAt?: string | null; lastError?: string | null; failureCount: number; nextAttemptAt?: string | null; deliveredCount: number }
+export interface StocktakeSchedule { id: Guid; name: string; locationId: Guid; location?: string; itemTypeId?: Guid | null; intervalDays: number; timeOfDay: string; nextRunAt: string; lastRunAt?: string | null; lastStocktakeId?: Guid | null; enabled: boolean; autoReconcileHours?: number | null }

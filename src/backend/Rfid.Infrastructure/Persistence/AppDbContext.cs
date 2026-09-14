@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Rfid.Application.Contracts;
+using Rfid.Domain;
 using Rfid.Domain.Entities;
 using Rfid.Domain.Lifecycle;
 
@@ -30,6 +31,9 @@ public class AppDbContext : DbContext, IAppDb
     public DbSet<Rule> Rules => Set<Rule>();
     public DbSet<Alert> Alerts => Set<Alert>();
     public DbSet<SolutionTemplate> SolutionTemplates => Set<SolutionTemplate>();
+    public DbSet<PresenceSession> PresenceSessions => Set<PresenceSession>();
+    public DbSet<StocktakeSchedule> StocktakeSchedules => Set<StocktakeSchedule>();
+    public DbSet<IntegrationEndpoint> IntegrationEndpoints => Set<IntegrationEndpoint>();
 
     private Guid CurrentTenant => _ctx?.TenantId ?? Guid.Empty;
 
@@ -195,6 +199,27 @@ public class AppDbContext : DbContext, IAppDb
             e.Property(a => a.Severity).HasConversion<string>();
             e.Property(a => a.Status).HasConversion<string>();
             e.HasIndex(a => new { a.TenantId, a.Status, a.RaisedAt });
+        });
+
+        b.Entity<PresenceSession>(e =>
+        {
+            e.ToTable("presence_sessions");
+            e.HasIndex(p => new { p.TenantId, p.ItemId, p.ExitedAt });
+            e.HasIndex(p => new { p.TenantId, p.LocationId, p.ExitedAt });
+            e.HasIndex(p => p.LastSeenAt);
+        });
+
+        b.Entity<StocktakeSchedule>(e =>
+        {
+            e.ToTable("stocktake_schedules");
+            e.HasIndex(s => new { s.TenantId, s.Enabled, s.NextRunAt });
+        });
+
+        b.Entity<IntegrationEndpoint>(e =>
+        {
+            e.ToTable("integration_endpoints");
+            e.Property(i => i.EventTypes).HasColumnType(isNpgsql ? "jsonb" : "text").HasConversion(JsonConv<List<ItemEventType>>(json), JsonComparer<List<ItemEventType>>());
+            e.Property(i => i.Headers).HasColumnType(isNpgsql ? "jsonb" : "text").HasConversion(JsonConv<Dictionary<string, object?>>(json), JsonComparer<Dictionary<string, object?>>());
         });
 
         b.Entity<SolutionTemplate>(e =>

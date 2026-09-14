@@ -450,7 +450,7 @@ public static class DemoScenarios
         new Scenario
         {
             Template = "people-presence", Site = "Riverside Campus & Riverside 10K", SiteCode = "CAMPUS", CompanyPrefix = "0614153",
-            Locations = { L("Reception", LocationKind.Zone), L("Turnstile", LocationKind.Gate), L("Office Zone", LocationKind.Zone), L("Lab Zone", LocationKind.Zone, null, Attr(("restricted", true))), L("Muster Point A", LocationKind.MusterPoint), L("Race Start", LocationKind.Checkpoint), L("5 km Split", LocationKind.Checkpoint), L("Finish", LocationKind.Checkpoint), L("Off site", LocationKind.External) },
+            Locations = { L("Reception", LocationKind.Zone, null, Attr(("presenceTimeoutSec", 43200))), L("Turnstile", LocationKind.Gate, null, Attr(("presenceTimeoutSec", 43200))), L("Office Zone", LocationKind.Zone, null, Attr(("presenceTimeoutSec", 43200))), L("Lab Zone", LocationKind.Zone, null, Attr(("restricted", true), ("presenceTimeoutSec", 43200))), L("Muster Point A", LocationKind.MusterPoint, null, Attr(("presenceTimeoutSec", 43200))), L("Riverside 10K", LocationKind.Area), L("Race Start", LocationKind.Checkpoint, "Riverside 10K", Attr(("order", 1))), L("5 km Split", LocationKind.Checkpoint, "Riverside 10K", Attr(("order", 2))), L("Finish", LocationKind.Checkpoint, "Riverside 10K", Attr(("order", 3))), L("Off site", LocationKind.External) },
             Parties = { P("Security", PartyKind.Department), P("Olivia Grant", PartyKind.Employee, "E-201"), P("Ben Carter", PartyKind.Employee, "E-202"), P("Visitor: Ana Silva", PartyKind.Person) },
             Items =
             {
