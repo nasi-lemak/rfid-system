@@ -1,0 +1,34 @@
+name: CI
+on:
+  push: { branches: [ main ] }
+  pull_request:
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: '8.0.x' }
+      - run: dotnet restore src/backend/Rfid.sln
+      - run: dotnet build src/backend/Rfid.sln --no-restore -warnaserror:CS8600,CS8602,CS8604
+      - run: dotnet test src/backend/Rfid.sln --no-build --verbosity normal
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: src/web/package-lock.json }
+      - run: npm ci
+        working-directory: src/web
+      - run: npm run build
+        working-directory: src/web
+  mobile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: src/mobile/package-lock.json }
+      - run: npm ci
+        working-directory: src/mobile
+      - run: npx tsc --noEmit
+        working-directory: src/mobile

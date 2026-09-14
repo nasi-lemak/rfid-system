@@ -1,0 +1,51 @@
+namespace Rfid.Domain;
+
+public enum UserRole { Admin, Operator, Viewer, Device }
+
+public enum PartyKind { Person, Employee, Customer, Supplier, Department, Vehicle, Patient, Other }
+
+public enum LocationKind
+{
+    Site, Building, Floor, Room, Zone, Area, Rack, Shelf, Bin, Dock, Gate,
+    Vehicle, Vessel, Cabinet, Locker, Yard, Customer, External, MusterPoint, Checkpoint
+}
+
+public enum ItemCategory { Serialized, Quantity }
+
+public enum ItemStatus { Active, Missing, Disposed, Retired }
+
+public enum TagTechnology { UhfGen2, HfNfc, Lf, Ble, Active, Barcode }
+
+public enum TagStatus { Unassigned, Active, Retired }
+
+public enum DeviceKind { Handheld, Fixed, Portal, Gate, Cabinet, Shelf, Locker, Tunnel, Vehicle, Printer }
+
+public enum AntennaDirection { None, In, Out }
+
+public enum OperationType
+{
+    Receive, Transfer, Issue, Return, Count, Dispatch, Inspect, Maintain, Dispose,
+    Pack, Unpack, ProcessStage, Commission, Adjust
+}
+
+public enum OperationStatus { Draft, Completed, Cancelled }
+
+public enum LineResult { Ok, Unknown, Unexpected, Rejected }
+
+public enum ItemEventType
+{
+    Created, Seen, Moved, CustodyChanged, StateChanged, Counted, QuantityChanged,
+    Packed, Unpacked, Inspected, Maintained, Disposed, Commissioned, Alert
+}
+
+public enum ReadSource { Handheld, Fixed, Manual }
+
+public enum StocktakeStatus { Open, Reconciled, Applied, Cancelled }
+
+public enum StocktakeResult { Pending, Found, Missing, Unexpected, Unknown }
+
+public enum RuleAction { CreateAlert, SetState, Webhook }
+
+public enum Severity { Info, Warning, Critical }
+
+public enum AlertStatus { Open, Acknowledged, Closed }

@@ -1,0 +1,20 @@
+# .NET
+bin/
+obj/
+*.user
+.vs/
+# Node
+node_modules/
+dist/
+.expo/
+web-build/
+*.tsbuildinfo
+# Env / secrets
+.env
+.env.local
+appsettings.*.local.json
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
