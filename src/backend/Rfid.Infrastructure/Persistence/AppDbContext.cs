@@ -34,6 +34,7 @@ public class AppDbContext : DbContext, IAppDb
     public DbSet<PresenceSession> PresenceSessions => Set<PresenceSession>();
     public DbSet<StocktakeSchedule> StocktakeSchedules => Set<StocktakeSchedule>();
     public DbSet<IntegrationEndpoint> IntegrationEndpoints => Set<IntegrationEndpoint>();
+    public DbSet<PrintJob> PrintJobs => Set<PrintJob>();
 
     private Guid CurrentTenant => _ctx?.TenantId ?? Guid.Empty;
 
@@ -223,6 +224,15 @@ public class AppDbContext : DbContext, IAppDb
             e.Property(i => i.Mapping).HasColumnType(isNpgsql ? "jsonb" : "text").HasConversion(JsonConv<Dictionary<string, object?>>(json), JsonComparer<Dictionary<string, object?>>());
             e.Property(i => i.Format).HasConversion<string>();
             e.Property(i => i.AuthType).HasConversion<string>();
+        });
+
+        b.Entity<PrintJob>(e =>
+        {
+            e.ToTable("print_jobs");
+            e.Property(p => p.Status).HasConversion<string>();
+            e.Property(p => p.Reason).HasConversion<string>();
+            e.HasIndex(p => new { p.TenantId, p.Status, p.NextAttemptAt });
+            e.HasIndex(p => new { p.ItemId, p.RequestedAt });
         });
 
         b.Entity<SolutionTemplate>(e =>

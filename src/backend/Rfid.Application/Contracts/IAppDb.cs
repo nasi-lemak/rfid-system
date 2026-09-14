@@ -26,6 +26,7 @@ public interface IAppDb
     DbSet<PresenceSession> PresenceSessions { get; }
     DbSet<StocktakeSchedule> StocktakeSchedules { get; }
     DbSet<IntegrationEndpoint> IntegrationEndpoints { get; }
+    DbSet<PrintJob> PrintJobs { get; }
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }
 
@@ -46,6 +47,9 @@ public interface ILivePublisher
 }
 
 public record LiveRead(string Epc, Guid? ItemId, string? ItemName, Guid? DeviceId, Guid? LocationId, double? Rssi, DateTime ReadAt);
+
+/// <summary>Sends ZPL to a label printer (raw TCP in the API, fake in tests).</summary>
+public interface IPrinterClient { Task SendAsync(string host, int port, string zpl, CancellationToken ct); }
 
 public interface IWebhookDispatcher
 {

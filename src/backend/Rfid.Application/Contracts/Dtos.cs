@@ -80,6 +80,8 @@ public class ReadRequest
     public DateTime? ReadAt { get; set; }
     /// <summary>Handhelds may state where they are instead of relying on antenna mapping.</summary>
     public Guid? LocationId { get; set; }
+    /// <summary>Direct range to the antenna/anchor in metres (UWB / ranging beacons); takes precedence over RSSI for positioning.</summary>
+    public double? RangeM { get; set; }
 }
 
 public class IngestResult

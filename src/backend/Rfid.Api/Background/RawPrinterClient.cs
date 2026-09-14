@@ -1,9 +1,9 @@
 using System.Net.Sockets;
 using System.Text;
+using Rfid.Application.Contracts;
 
 namespace Rfid.Api.Background;
 
-public interface IPrinterClient { Task SendAsync(string host, int port, string zpl, CancellationToken ct); }
 
 /// <summary>Sends ZPL to a network label printer over the raw 9100 port.</summary>
 public class RawPrinterClient : IPrinterClient

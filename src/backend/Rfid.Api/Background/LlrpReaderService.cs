@@ -19,8 +19,24 @@ public class LlrpReaderService : BackgroundService
     private readonly IServiceScopeFactory _scopes;
     private readonly ILogger<LlrpReaderService> _log;
     private readonly IConfiguration _cfg;
-    private readonly Dictionary<Guid, (LlrpClient client, string host)> _clients = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, (LlrpClient client, string host)> _clients = new();
     public LlrpReaderService(IServiceScopeFactory scopes, ILogger<LlrpReaderService> log, IConfiguration cfg) { _scopes = scopes; _log = log; _cfg = cfg; }
+
+    public static LlrpReaderOptions OptionsFor(Device d)
+    {
+        var c = d.Config;
+        double? Dbl(string k) => c.TryGetValue(k, out var v) && double.TryParse(v?.ToString(), out var x) ? x : null;
+        int? Int(string k) => c.TryGetValue(k, out var v) && int.TryParse(v?.ToString(), out var x) ? x : null;
+        var ants = c.TryGetValue("llrpAntennas", out var a) && a != null ? a.ToString()!.Trim('[', ']').Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(x => ushort.TryParse(x, out var u) ? u : (ushort)0).Where(u => u > 0).ToArray() : null;
+        return new LlrpReaderOptions { TransmitPowerDbm = Dbl("llrpPower"), Session = Int("llrpSession") ?? 1, TagPopulation = Int("llrpTagPopulation") ?? 32, AntennaIds = ants, GpiStartPort = Int("llrpGpiStart"), ReportEveryNTags = Int("llrpReportEveryN") ?? 1 };
+    }
+
+    public record ReaderStatus(Guid DeviceId, string Endpoint, bool Connected, DateTime? ConnectedAt, long TagsReceived, ReaderCapabilities? Capabilities, LlrpReaderOptions Options);
+    public IEnumerable<ReaderStatus> Statuses() => _clients.Select(kv => new ReaderStatus(kv.Key, kv.Value.host, kv.Value.client.Connected, kv.Value.client.ConnectedAt, kv.Value.client.TagsReceived, kv.Value.client.Capabilities, kv.Value.client.Options)).ToList();
+    public ReaderStatus? Status(Guid deviceId) => Statuses().FirstOrDefault(s => s.DeviceId == deviceId);
+    public Task SetGpoAsync(Guid deviceId, int port, bool state, CancellationToken ct) => _clients.TryGetValue(deviceId, out var c) && c.client.Connected ? c.client.SetGpoAsync(port, state, ct) : throw new InvalidOperationException("Reader is not connected");
+    /// <summary>Drops the connection so the supervisor reconnects with fresh configuration.</summary>
+    public async Task ReconnectAsync(Guid deviceId) { if (_clients.Remove(deviceId, out var c)) await c.client.StopAsync(); }
 
     public static (string host, int port)? Endpoint(Device d)
     {
@@ -43,17 +59,19 @@ public class LlrpReaderService : BackgroundService
                 var wanted = devices.Select(d => (d, ep: Endpoint(d))).Where(x => x.ep != null).ToList();
                 foreach (var (d, ep) in wanted)
                 {
-                    var key = $"{ep!.Value.host}:{ep.Value.port}";
+                    var opts = OptionsFor(d);
+                    var key = $"{ep!.Value.host}:{ep.Value.port}|{System.Text.Json.JsonSerializer.Serialize(opts)}";
                     if (_clients.TryGetValue(d.Id, out var existing) && existing.client.Connected && existing.host == key) continue;
                     if (existing.client != null) await existing.client.StopAsync();
                     var client = new LlrpClient(ep.Value.host, ep.Value.port);
                     client.Log += m => _log.LogInformation("LLRP {Device}: {Message}", d.Name, m);
                     var deviceId = d.Id; var tenantId = d.TenantId; var deviceName = d.Name;
                     client.TagsReported += tags => _ = IngestAsync(tenantId, deviceId, deviceName, tags);
-                    try { await client.StartAsync(ct); _clients[d.Id] = (client, key); }
-                    catch (Exception ex) when (ex is not OperationCanceledException) { _log.LogWarning("LLRP {Device} at {Endpoint}: {Message}; will retry", d.Name, key, ex.Message); await client.StopAsync(); _clients.Remove(d.Id); }
+                    client.GpiChanged += (port, high) => _log.LogInformation("LLRP {Device}: GPI {Port} {State}", deviceName, port, high ? "high" : "low");
+                    try { await client.StartAsync(opts, ct); _clients[d.Id] = (client, key); }
+                    catch (Exception ex) when (ex is not OperationCanceledException) { _log.LogWarning("LLRP {Device} at {Endpoint}: {Message}; will retry", d.Name, key, ex.Message); await client.StopAsync(); _clients.TryRemove(d.Id, out _); }
                 }
-                foreach (var stale in _clients.Keys.Except(wanted.Select(w => w.d.Id)).ToList()) { await _clients[stale].client.StopAsync(); _clients.Remove(stale); }
+                foreach (var stale in _clients.Keys.Except(wanted.Select(w => w.d.Id)).ToList()) { if (_clients.TryRemove(stale, out var sc)) await sc.client.StopAsync(); }
             }
             catch (Exception ex) when (ex is not OperationCanceledException) { _log.LogWarning(ex, "LLRP supervisor error"); }
             await Task.Delay(TimeSpan.FromSeconds(_cfg.GetValue("Llrp:RefreshSeconds", 60)), ct);

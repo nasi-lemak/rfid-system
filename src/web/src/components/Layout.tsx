@@ -5,8 +5,8 @@ import { useAlerts } from '../api/hooks';
 
 const groups: { title: string; links: { to: string; label: string; admin?: boolean }[] }[] = [
   { title: 'Overview', links: [{ to: '/', label: 'Dashboard' }, { to: '/live', label: 'Live reads' }, { to: '/alerts', label: 'Alerts' }, { to: '/presence', label: 'Presence & location' }, { to: '/events', label: 'Event log' }, { to: '/reports', label: 'Reports' }] },
-  { title: 'Track', links: [{ to: '/items', label: 'Items' }, { to: '/tags', label: 'Tags' }, { to: '/operations', label: 'Operations' }, { to: '/stocktakes', label: 'Stocktakes' }] },
-  { title: 'Configure', links: [{ to: '/item-types', label: 'Item types' }, { to: '/locations', label: 'Locations' }, { to: '/parties', label: 'Parties' }, { to: '/devices', label: 'Readers & devices' }, { to: '/rules', label: 'Rules' }, { to: '/labels', label: 'Label designer' }, { to: '/templates', label: 'Solution templates' }, { to: '/integrations', label: 'Integrations', admin: true }, { to: '/users', label: 'Users', admin: true }] },
+  { title: 'Track', links: [{ to: '/items', label: 'Items' }, { to: '/tags', label: 'Tags' }, { to: '/operations', label: 'Operations' }, { to: '/stocktakes', label: 'Stocktakes' }, { to: '/print-queue', label: 'Print queue' }] },
+  { title: 'Configure', links: [{ to: '/item-types', label: 'Item types' }, { to: '/locations', label: 'Locations' }, { to: '/parties', label: 'Parties' }, { to: '/devices', label: 'Readers & devices' }, { to: '/rules', label: 'Rules' }, { to: '/labels', label: 'Label designer' }, { to: '/templates', label: 'Solution templates' }, { to: '/integrations', label: 'Integrations', admin: true }, { to: '/import', label: 'ERP import', admin: true }, { to: '/users', label: 'Users', admin: true }] },
 ];
 
 export default function Layout() {

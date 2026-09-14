@@ -41,7 +41,7 @@ public class ReadIngestionService
         var explicitLocs = explicitLocIds.Count == 0 ? new() : await _db.Locations.Where(l => explicitLocIds.Contains(l.Id)).ToDictionaryAsync(l => l.Id, ct);
         var live = new List<LiveRead>();
         var seenThisBatch = new HashSet<(Guid, Guid?)>();
-        var sightings = new Dictionary<Guid, (Item item, List<(Antenna antenna, double rssi)> list, DateTime at)>();
+        var sightings = new Dictionary<Guid, (Item item, List<PositionService.Sighting> list, DateTime at)>();
 
         // Keep the latest read per EPC+antenna to avoid hammering the DB with duplicates from a single batch,
         // and process the strongest read of each EPC first so that, when several antennas/zones see the same
@@ -66,10 +66,10 @@ public class ReadIngestionService
 
             if (item == null) { result.Unknown++; continue; }
             result.Resolved++;
-            if (antenna?.X != null && r.Rssi.HasValue)
+            if (antenna?.X != null && (r.Rssi.HasValue || r.RangeM.HasValue))
             {
                 if (!sightings.TryGetValue(item.Id, out var sg)) sightings[item.Id] = sg = (item, new(), at);
-                sg.list.Add((antenna, r.Rssi.Value));
+                sg.list.Add(new PositionService.Sighting(antenna, r.Rssi, r.RangeM));
             }
             if (seenThisBatch.Any(x => x.Item1 == item.Id)) continue; // a stronger antenna already placed this item
             seenThisBatch.Add((item.Id, location?.Id));

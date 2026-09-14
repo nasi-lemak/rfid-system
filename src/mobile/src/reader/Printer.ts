@@ -20,6 +20,8 @@ export async function printLabel(itemId: string): Promise<string> {
     return 'Label sent to Bluetooth printer';
   }
   const r = await Api.printLabel([itemId], s.printerDeviceId);
-  if (!r[0]?.ok) throw new Error(r[0]?.error ?? 'Print failed');
-  return `Label sent to ${s.printerDeviceName ?? 'printer'} (EPC ${r[0].epc})`;
+  if (!r[0]) throw new Error('Print failed');
+  if (r[0].ok) return `Label printed on ${s.printerDeviceName ?? 'printer'} (${r[0].reason ?? 'Initial'}, EPC ${r[0].epc})`;
+  if (r[0].status === 'Queued') return `Printer busy/offline – job queued on ${s.printerDeviceName ?? 'printer'}; it will retry automatically`;
+  throw new Error(r[0].error ?? `Print ${r[0].status}`);
 }

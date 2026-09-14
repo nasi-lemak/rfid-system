@@ -147,8 +147,17 @@ Background jobs run per tenant inside an ambient scope (`AmbientContext`), so th
 | `Labels/LabelDesign`, `LabelCompiler` | Declarative label document → ZPL template |
 | Mobile `reader/Printer.ts` | Network (server) or Bluetooth (native module) label printing |
 
+### v1.3 additions
+
+| Component | Role |
+|---|---|
+| `LlrpConfigCodec` + client options | GET_READER_CAPABILITIES, per-antenna power/session config, GPI-triggered ROSpec, GPO writes, GPI events; `LlrpReaderService` exposes status and GPO control |
+| `PositionSmoother` / `KalmanTrack`, `ReadRequest.RangeM` | Range-aware trilateration and per-item Kalman smoothing |
+| `ImportService` | CSV/JSON asset-master upsert with dry run and reconciliation |
+| `PrintQueueService` + `PrintQueueWorkerService`, `PrintJob` | Durable print jobs, retries, reprint audit, label stock alerts |
+
 ## 7. Roadmap
-- Reader configuration over LLRP (transmit power, session, GPIO triggers) and GET_READER_CAPABILITIES.
-- Range-based (UWB) positioning input and Kalman smoothing of positions.
-- Inbound ERP sync (asset master → items) and reconciliation reports.
-- Print queues, reprint audit and label stock tracking.
+- Multi-node deployment: distributed LLRP/print workers and shared position tracks (Redis).
+- RTLS heat maps and path replay from position history.
+- SSO (OIDC) and per-site role-based access.
+- Offline floor plans on the handheld.

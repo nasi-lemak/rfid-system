@@ -13,7 +13,7 @@ for a JWT at `POST /api/auth/device {"token": "..."}`. Handhelds may also use a 
 | Zebra FX7500 / FX9600 (IoT Connector) | HTTP POST endpoint → `POST /api/ingest/zebra?deviceId=<id>` (`data.idHex`, `antenna`, `peakRssi`, `TID`) |
 | Anything else that can POST JSON | `POST /api/ingest/generic` — `{reads:[…]}`, `[…]`, a single read object, or an array of EPC strings; fields `epc/epcHex/idHex/tag/id`, `rssi/peakRssi`, `antennaPort/antenna/port`, `readAt/timestamp/time` |
 | **MQTT** | Set `Mqtt:Enabled=true`, `Mqtt:Host`, `Mqtt:Topics` in `appsettings.json` (or env `Mqtt__Enabled` …). Give each device a `Config.mqttTopic` (exact topic or `+`/`#` wildcard pattern) and optionally `Config.vendor` (`impinj`/`zebra`). Payloads on matching topics go through the same adapters. |
-| **LLRP** (native client) | Set `Config.llrpHost` (and optional `llrpPort`, default 5084) on a Fixed/Portal/Gate device. The API's `LlrpReaderService` connects to the reader, resets its configuration, adds/enables/starts a continuous Gen2 inventory ROSpec on all antennas and streams `RO_ACCESS_REPORT`s (EPC-96 / EPCData, antenna, peak RSSI, timestamps, seen count) into ingestion; keepalives are acknowledged and connections re-established automatically. Works with Impinj Speedway/R700 (LLRP mode), Zebra FX-series, Alien and other LLRP 1.0.1 readers. Set `llrpEnabled: false` to pause. |
+| **LLRP** (native client) | Set `Config.llrpHost` (and optional `llrpPort`, default 5084) on a Fixed/Portal/Gate device. The API's `LlrpReaderService` connects to the reader, resets its configuration, adds/enables/starts a continuous Gen2 inventory ROSpec on all antennas and streams `RO_ACCESS_REPORT`s (EPC-96 / EPCData, antenna, peak RSSI, timestamps, seen count) into ingestion; keepalives are acknowledged and connections re-established automatically. Works with Impinj Speedway/R700 (LLRP mode), Zebra FX-series, Alien and other LLRP 1.0.1 readers. Set `llrpEnabled: false` to pause. **Configuration** (device Config): `llrpPower` (dBm, mapped to the reader's power table from `GET_READER_CAPABILITIES`), `llrpSession` (Gen2 S0–S3), `llrpTagPopulation`, `llrpAntennas` ("1,2"), `llrpGpiStart` (start inventory while a GPI is high — photo-eye/conveyor portals), `llrpReportEveryN`. `GET /api/devices/{id}/llrp/status` shows connection, capabilities (manufacturer, firmware, antennas, GPIO count, power table); `POST …/llrp/gpo {port,state}` drives stack lights/buzzers; `POST …/llrp/reconnect` applies new settings. |
 
 Antenna → location mapping (with `In` / `Out` direction for portals) turns raw reads into zone
 movements and rule evaluation. When several antennas or gateways see one tag in the same batch, the
@@ -32,10 +32,12 @@ estimate and an accuracy figure (fit residual) are stored on the item (`Position
 - `GET /api/positions/floor-plans/{locationId}?maxAgeMinutes=720` — anchors + recent item positions
 - Web: Presence & location → **Floor plan (x/y)**
 
-Typical sources: BLE gateways (Kontakt.io, Minew, Aruba), UWB anchors reporting RSSI/range, or
-multi-antenna UHF readers with directional antennas. For UWB systems that report ranges directly,
-post the range as `rssi` with `RssiAt1m = 0`, `PathLossExponent = 1` → distance = 10^(−rssi/10)… or
-simply post the range in dB form; a dedicated range field is a small extension of `ReadRequest`.
+Typical sources: BLE gateways (Kontakt.io, Minew, Aruba), UWB anchors, or multi-antenna UHF readers
+with directional antennas. **UWB / ranging systems** post the measured distance directly as
+`rangeM` on each read (`/api/ingest/reads`, or `rangeM`/`range`/`distance` in generic JSON); ranges
+are weighted 4× over RSSI-derived distances in the solver. Successive fixes per item are smoothed by a
+constant-velocity **Kalman filter** (per axis; resets on zone change or after 10 min without a fix),
+so jittery RSSI positions settle while moving tags are still tracked.
 
 ## Presence engine
 
@@ -93,6 +95,18 @@ Auth: `None` (signature only), `Bearer` (`ApiToken`), `Basic` (`Username`/`Passw
 `OAuth2ClientCredentials` (`TokenUrl`, `ClientId`, `ClientSecret`, `Scope`; tokens are cached until
 expiry). Authentication failures back off like delivery failures.
 
+### Inbound ERP sync (asset master → items)
+
+`POST /api/import/items` with `{csv: "...", dryRun, defaultType, createMissingLocations, createMissingParties, updateExisting, source}`
+(or `{json: "[...]"}` / `{rows: [...]}`), or raw CSV to `POST /api/import/items/csv?dryRun=&defaultType=`.
+Columns are matched loosely (`AssetNumber|Identifier|SerialNumber`, `Description|Name`, `AssetClass|Type`,
+`Location|Room`, `Owner|Custodian|AssignedTo`, `AcquisitionValue|Cost`, `CapitalizationDate|PurchasedAt`,
+`EPC|RFID|Tag`, `Quantity`, `Lot`, `Expiry`); other columns become attributes. Rows upsert by
+identifier, can create locations/custodians, bind EPCs, and record an `Imported` event per change.
+`dryRun` returns the per-row change list without writing. `POST /api/import/reconcile` compares an ERP
+list with the platform: matched count, identifiers missing on either side and field differences
+(name, location, custodian, state, cost, quantity). Reports: `imports`. Web: **ERP import**.
+
 ## Pull-style exports & reports
 
 `GET /api/reports` lists the catalog; `GET /api/reports/{code}?format=csv|json&days=…&from=…&to=…`.
@@ -124,6 +138,18 @@ and elements (text, Code-128 barcode, QR, box, line) positioned in millimetres w
 compiles it to the item type's ZPL template (`PUT /api/labels/designs/item-types/{id}`,
 `POST /api/labels/designs/compile` for previews). Items of that type print with the design from the
 web (item page) or the handheld.
+
+### Print queue, reprint audit & label stock
+
+`POST /api/labels/print` now enqueues `PrintJob`s (exact ZPL stored per job) and processes them
+immediately; a worker retries failed jobs with back-off (5 attempts) and every successful print
+records a `LabelPrinted` event on the item. Jobs for an item that already has a printed label are
+classified as **Reprint** automatically; `reason` may also be `Replacement`/`Batch` with a `note`.
+`GET /api/labels/jobs?itemId=&printerId=&status=`, `POST /api/labels/jobs/{id}/retry|cancel`,
+`POST /api/labels/jobs/process`. Printer devices track `labelStock`/`labelStockMin` in Config
+(`POST /api/labels/printers/{id}/stock {count, minimum}` after loading a roll); each printed copy
+decrements the count and a Warning/Critical alert fires at the minimum / at zero. Report:
+`print-jobs`. Web: **Print queue**.
 
 ### Printing from the handheld
 

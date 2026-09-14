@@ -23,6 +23,8 @@ import Presence from './pages/Presence';
 import Reports from './pages/Reports';
 import Integrations from './pages/Integrations';
 import LabelDesigner from './pages/LabelDesigner';
+import Import from './pages/Import';
+import PrintQueue from './pages/PrintQueue';
 
 export default function App() {
   const { user } = useAuth();
@@ -51,6 +53,8 @@ export default function App() {
         <Route path="reports" element={<Reports />} />
         <Route path="integrations" element={<Integrations />} />
         <Route path="labels" element={<LabelDesigner />} />
+        <Route path="print-queue" element={<PrintQueue />} />
+        <Route path="import" element={<Import />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

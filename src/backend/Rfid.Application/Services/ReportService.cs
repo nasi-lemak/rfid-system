@@ -29,6 +29,8 @@ public class ReportService
         new("stocktakes", "Stocktake accuracy", "Expected / found / missing / unexpected and accuracy % per stocktake."),
         new("reads", "Reader activity", "Reads per device per day for the last 14 days."),
         new("dwell", "Zone dwell", "Closed presence sessions: time spent per item per zone (param: days, default 7)."),
+        new("print-jobs", "Label print audit", "Every label print / reprint with printer, reason, requester and outcome (param: days, default 30)."),
+        new("imports", "Import history", "Items created or updated by ERP imports (param: days, default 30)."),
     };
 
     public async Task<(List<string> columns, List<object?[]> rows)> RunAsync(string code, IDictionary<string, string?> p, CancellationToken ct = default)
@@ -121,6 +123,25 @@ public class ReportService
                 var items = await _db.Items.Where(i => itemIds.Contains(i.Id)).ToDictionaryAsync(i => i.Id, ct);
                 var locs = await _db.Locations.ToDictionaryAsync(l => l.Id, l => l.Name, ct);
                 return (new() { "Identifier", "Name", "Zone", "EnteredAt", "ExitedAt", "DwellMinutes", "Reads", "PeakRssi" }, sessions.Select(s => new object?[] { items.GetValueOrDefault(s.ItemId)?.Identifier, items.GetValueOrDefault(s.ItemId)?.Name, locs.GetValueOrDefault(s.LocationId), s.EnteredAt, s.ExitedAt, Math.Round(((s.ExitedAt ?? now) - s.EnteredAt).TotalMinutes, 1), s.ReadCount, s.PeakRssi }).ToList());
+            }
+            case "print-jobs":
+            {
+                var since = now.AddDays(-Days(30));
+                var jobs = await _db.PrintJobs.Where(j => j.RequestedAt >= since).OrderByDescending(j => j.RequestedAt).Take(5000).ToListAsync(ct);
+                var itemIds = jobs.Select(j => j.ItemId).Distinct().ToList();
+                var items = await _db.Items.Where(i => itemIds.Contains(i.Id)).ToDictionaryAsync(i => i.Id, ct);
+                var devs = await _db.Devices.ToDictionaryAsync(d => d.Id, d => d.Name, ct);
+                var users = await _db.Users.ToDictionaryAsync(u => u.Id, u => u.DisplayName, ct);
+                return (new() { "RequestedAt", "Identifier", "Name", "EPC", "Printer", "Reason", "Copies", "Status", "Attempts", "PrintedAt", "RequestedBy", "Error" },
+                    jobs.Select(j => new object?[] { j.RequestedAt, items.GetValueOrDefault(j.ItemId)?.Identifier, items.GetValueOrDefault(j.ItemId)?.Name, j.Epc, devs.GetValueOrDefault(j.PrinterDeviceId), j.Reason.ToString(), j.Copies, j.Status.ToString(), j.Attempts, j.PrintedAt, j.RequestedBy.HasValue ? users.GetValueOrDefault(j.RequestedBy.Value) : null, j.Error }).ToList());
+            }
+            case "imports":
+            {
+                var since = now.AddDays(-Days(30));
+                var events = await _db.ItemEvents.Where(e => e.Type == ItemEventType.Imported && e.OccurredAt >= since).OrderByDescending(e => e.OccurredAt).Take(5000).ToListAsync(ct);
+                var itemIds = events.Select(e => e.ItemId).Distinct().ToList();
+                var items = await _db.Items.Where(i => itemIds.Contains(i.Id)).ToDictionaryAsync(i => i.Id, ct);
+                return (new() { "OccurredAt", "Identifier", "Name", "Source", "Action", "Changes" }, events.Select(e => new object?[] { e.OccurredAt, items.GetValueOrDefault(e.ItemId)?.Identifier, items.GetValueOrDefault(e.ItemId)?.Name, e.Data.GetValueOrDefault("source"), e.Data.GetValueOrDefault("action") ?? "updated", e.Data.GetValueOrDefault("changes") }).ToList());
             }
             default: throw new NotFoundException($"Report {code}");
         }

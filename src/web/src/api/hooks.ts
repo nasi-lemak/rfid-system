@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { del, get, post, put } from './client';
-import type { Alert, Dashboard, SeedResult, FloorPlanSummary, FloorPlan, ZoneOccupancy, MusterReport, TimingRow, ReportDef, ReportResult, IntegrationEndpoint, StocktakeSchedule, Device, Item, ItemEvent, ItemType, Location, Lookups, OperationRequest, OperationResult, OperationSummary, Paged, Party, Rule, StocktakeDetail, StocktakeListRow, StocktakeSummary, Tag, Template } from './types';
+import type { Alert, Dashboard, SeedResult, FloorPlanSummary, FloorPlan, PrintJob, LlrpStatus, ZoneOccupancy, MusterReport, TimingRow, ReportDef, ReportResult, IntegrationEndpoint, StocktakeSchedule, Device, Item, ItemEvent, ItemType, Location, Lookups, OperationRequest, OperationResult, OperationSummary, Paged, Party, Rule, StocktakeDetail, StocktakeListRow, StocktakeSummary, Tag, Template } from './types';
 
 export const useLookups = () => useQuery({ queryKey: ['lookups'], queryFn: () => get<Lookups>('/api/lookups'), staleTime: Infinity });
 export const useDashboard = () => useQuery({ queryKey: ['dashboard'], queryFn: () => get<Dashboard>('/api/dashboard'), refetchInterval: 15000 });
@@ -73,3 +73,6 @@ export const useSchedules = () => useQuery({ queryKey: ['schedules'], queryFn: (
 
 export const useFloorPlans = () => useQuery({ queryKey: ['floor-plans'], queryFn: () => get<FloorPlanSummary[]>('/api/positions/floor-plans') });
 export const useFloorPlan = (id?: string) => useQuery({ queryKey: ['floor-plan', id], queryFn: () => get<FloorPlan>(`/api/positions/floor-plans/${id}`), enabled: !!id, refetchInterval: 4000 });
+
+export const usePrintJobs = (params: Record<string, unknown>) => useQuery({ queryKey: ['print-jobs', params], queryFn: () => get<PrintJob[]>('/api/labels/jobs', params), refetchInterval: 5000 });
+export const useLlrpStatus = (deviceId?: string) => useQuery({ queryKey: ['llrp', deviceId], queryFn: () => get<LlrpStatus>(`/api/devices/${deviceId}/llrp/status`), enabled: !!deviceId, refetchInterval: 5000 });

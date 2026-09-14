@@ -73,7 +73,7 @@ public static class IngestAdapters
         if (r.ValueKind != JsonValueKind.Object) return;
         var epc = Str(r, "epc") ?? Str(r, "epcHex") ?? Str(r, "idHex") ?? Str(r, "tag") ?? Str(r, "id");
         if (epc == null) return;
-        b.Reads.Add(new ReadRequest { Epc = epc, Tid = Str(r, "tid") ?? Str(r, "tidHex"), AntennaPort = Int(r, "antennaPort") ?? Int(r, "antenna") ?? Int(r, "port"), Rssi = Dbl(r, "rssi") ?? Dbl(r, "peakRssi"), ReadAt = Date(r, "readAt") ?? Date(r, "timestamp") ?? Date(r, "time"), LocationId = Str(r, "locationId") is { } l && Guid.TryParse(l, out var lg) ? lg : null });
+        b.Reads.Add(new ReadRequest { Epc = epc, Tid = Str(r, "tid") ?? Str(r, "tidHex"), AntennaPort = Int(r, "antennaPort") ?? Int(r, "antenna") ?? Int(r, "port"), Rssi = Dbl(r, "rssi") ?? Dbl(r, "peakRssi"), ReadAt = Date(r, "readAt") ?? Date(r, "timestamp") ?? Date(r, "time"), LocationId = Str(r, "locationId") is { } l && Guid.TryParse(l, out var lg) ? lg : null, RangeM = Dbl(r, "rangeM") ?? Dbl(r, "range") ?? Dbl(r, "distance") });
     }
 
     private static IEnumerable<JsonElement> AsArray(JsonElement e) => e.ValueKind == JsonValueKind.Array ? e.EnumerateArray() : new[] { e };

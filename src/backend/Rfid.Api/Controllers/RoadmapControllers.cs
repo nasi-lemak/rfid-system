@@ -2,7 +2,6 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Rfid.Api.Background;
 using Rfid.Application.Contracts;
 using Rfid.Application.Services;
 using Rfid.Application.Templates;
@@ -121,8 +120,8 @@ public class IntegrationsController : ControllerBase
 [ApiController, Route("api/labels"), Authorize(Policy = "Operator")]
 public class LabelsController : ControllerBase
 {
-    private readonly AppDbContext _db; private readonly IPrinterClient _printer;
-    public LabelsController(AppDbContext db, IPrinterClient printer) { _db = db; _printer = printer; }
+    private readonly AppDbContext _db; private readonly PrintQueueService _queue;
+    public LabelsController(AppDbContext db, PrintQueueService queue) { _db = db; _queue = queue; }
 
     private Task<Item?> Load(Guid id) => _db.Items.Include(i => i.ItemType).Include(i => i.CurrentLocation).Include(i => i.Tags).FirstOrDefaultAsync(i => i.Id == id);
 
@@ -136,27 +135,60 @@ public class LabelsController : ControllerBase
         return Content(LabelService.Render(item, e, template), "text/plain");
     }
 
-    public record PrintRequest(List<Guid> ItemIds, Guid PrinterDeviceId, string? Template);
+    public record PrintRequest(List<Guid> ItemIds, Guid PrinterDeviceId, string? Template, PrintReason? Reason, int? Copies, string? Note, string? Epc);
 
-    /// <summary>Prints (and RFID-encodes) labels for the given items on a printer device (Config: host, port=9100).</summary>
+    /// <summary>Queues labels for the given items on a printer device; the print worker sends them with retries and records the audit trail.</summary>
     [HttpPost("print")]
-    public async Task<IActionResult> Print(PrintRequest req, CancellationToken ct)
+    public async Task<IActionResult> Print(PrintRequest req, bool now = true, CancellationToken ct = default)
     {
-        var printer = await _db.Devices.FindAsync(req.PrinterDeviceId);
-        if (printer == null || printer.Kind != DeviceKind.Printer) return BadRequest(new { error = "Printer device not found" });
-        var host = printer.Config.GetValueOrDefault("host")?.ToString(); var port = int.TryParse(printer.Config.GetValueOrDefault("port")?.ToString(), out var p) ? p : 9100;
-        if (string.IsNullOrEmpty(host)) return BadRequest(new { error = "Printer device has no 'host' in its config" });
-        var results = new List<object>();
-        foreach (var id in req.ItemIds)
-        {
-            var item = await Load(id);
-            var epc = item?.Tags.FirstOrDefault(t => t.Status == TagStatus.Active)?.Epc;
-            if (item == null || epc == null) { results.Add(new { itemId = id, ok = false, error = "Item or tag not found" }); continue; }
-            try { await _printer.SendAsync(host, port, LabelService.Render(item, epc, req.Template), ct); results.Add(new { itemId = id, ok = true, epc }); printer.LastSeenAt = DateTime.UtcNow; }
-            catch (Exception ex) { results.Add(new { itemId = id, ok = false, error = ex.Message }); }
-        }
-        await _db.SaveChangesAsync(ct);
-        return Ok(results);
+        var jobs = await _queue.EnqueueAsync(req.ItemIds, req.PrinterDeviceId, req.Reason ?? PrintReason.Initial, req.Copies ?? 1, req.Template, req.Note, req.Epc, ct);
+        if (now) await _queue.ProcessAsync(DateTime.UtcNow, ct);
+        return Ok(jobs.Select(j => new { jobId = j.Id, itemId = j.ItemId, ok = j.Status == PrintJobStatus.Printed, status = j.Status.ToString(), j.Epc, error = j.Error, j.Reason }));
+    }
+
+    /// <summary>Print queue and audit trail (filter by item, printer or status).</summary>
+    [HttpGet("jobs")]
+    public async Task<IActionResult> Jobs(Guid? itemId, Guid? printerId, PrintJobStatus? status, int take = 200)
+    {
+        var q = _db.PrintJobs.AsQueryable();
+        if (itemId.HasValue) q = q.Where(j => j.ItemId == itemId); if (printerId.HasValue) q = q.Where(j => j.PrinterDeviceId == printerId); if (status.HasValue) q = q.Where(j => j.Status == status);
+        var jobs = await q.OrderByDescending(j => j.RequestedAt).Take(Math.Clamp(take, 1, 1000)).ToListAsync();
+        var ids = jobs.Select(j => j.ItemId).Distinct().ToList();
+        var items = await _db.Items.Where(i => ids.Contains(i.Id)).ToDictionaryAsync(i => i.Id);
+        var devs = await _db.Devices.ToDictionaryAsync(d => d.Id, d => d.Name);
+        var users = await _db.Users.ToDictionaryAsync(u => u.Id, u => u.DisplayName);
+        return Ok(jobs.Select(j => new { j.Id, j.ItemId, ItemName = items.GetValueOrDefault(j.ItemId)?.Name, ItemIdentifier = items.GetValueOrDefault(j.ItemId)?.Identifier, j.PrinterDeviceId, Printer = devs.GetValueOrDefault(j.PrinterDeviceId), j.Epc, j.Status, j.Reason, j.Note, j.Copies, j.Attempts, j.Error, j.RequestedAt, RequestedBy = j.RequestedBy.HasValue ? users.GetValueOrDefault(j.RequestedBy.Value) : null, j.PrintedAt, j.NextAttemptAt }));
+    }
+
+    [HttpPost("jobs/{id:guid}/retry")]
+    public async Task<IActionResult> Retry(Guid id, CancellationToken ct)
+    {
+        var j = await _db.PrintJobs.FindAsync(new object[] { id }, ct); if (j == null) return NotFound();
+        j.Status = PrintJobStatus.Queued; j.NextAttemptAt = null; j.Attempts = 0; j.Error = null; await _db.SaveChangesAsync(ct);
+        await _queue.ProcessAsync(DateTime.UtcNow, ct);
+        return Ok(new { j.Id, j.Status, j.Error });
+    }
+
+    [HttpPost("jobs/{id:guid}/cancel")]
+    public async Task<IActionResult> Cancel(Guid id)
+    {
+        var j = await _db.PrintJobs.FindAsync(id); if (j == null) return NotFound();
+        if (j.Status == PrintJobStatus.Queued) { j.Status = PrintJobStatus.Cancelled; await _db.SaveChangesAsync(); }
+        return Ok(new { j.Id, j.Status });
+    }
+
+    [HttpPost("jobs/process")] public async Task<IActionResult> Process(CancellationToken ct) => Ok(new { printed = await _queue.ProcessAsync(DateTime.UtcNow, ct) });
+
+    public record StockRequest(int Count, int? Minimum);
+
+    /// <summary>Sets the label stock on a printer (after loading a new roll); alerts fire when it drops to the minimum.</summary>
+    [HttpPost("printers/{deviceId:guid}/stock")]
+    public async Task<IActionResult> Stock(Guid deviceId, StockRequest r)
+    {
+        var d = await _db.Devices.FindAsync(deviceId); if (d == null || d.Kind != DeviceKind.Printer) return NotFound();
+        d.Config["labelStock"] = Math.Max(0, r.Count); if (r.Minimum.HasValue) d.Config["labelStockMin"] = r.Minimum.Value;
+        await _db.SaveChangesAsync();
+        return Ok(new { d.Id, labelStock = d.Config["labelStock"], labelStockMin = d.Config.GetValueOrDefault("labelStockMin") });
     }
 }
 

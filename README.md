@@ -118,7 +118,18 @@ See [`docs/INTEGRATION.md`](docs/INTEGRATION.md).
   boxes, RFID encode).
 - **Handheld printing** — network printers via the server or Bluetooth mobile printers.
 
+## v1.3
+
+- **LLRP reader configuration** — transmit power (mapped to the reader's capability table), Gen2
+  session/population, antenna selection, GPI-triggered inventory, GPO control, capabilities/status API.
+- **UWB ranging + Kalman smoothing** — `rangeM` on reads, range-weighted trilateration, per-item
+  constant-velocity smoothing.
+- **Inbound ERP sync** — CSV/JSON asset-master import with dry run, upsert, EPC binding and
+  read-only reconciliation (missing on either side, field differences).
+- **Print queue** — durable print jobs with retries, reprint audit trail (`LabelPrinted` events),
+  label-stock tracking with low-stock alerts.
+
 ## Roadmap
 
-Reader configuration management over LLRP (power, sessions, GPIO) · UWB range-based positioning
-field · bidirectional ERP sync (inbound asset master) · label print queues and reprint audit.
+Multi-node deployment (distributed LLRP/print workers, Redis-backed position tracks) · RTLS heat maps
+and path replay · SSO (OIDC) and per-site RBAC · mobile offline maps and floor plans.

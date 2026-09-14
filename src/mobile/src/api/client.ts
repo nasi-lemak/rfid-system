@@ -50,6 +50,6 @@ export const Api = {
   stocktakeScans: (id: string, epcs: string[], locationId?: string) => post<StocktakeSummary>(`/api/stocktakes/${id}/scans`, { epcs, locationId }),
   stocktakeReconcile: (id: string) => post<StocktakeSummary>(`/api/stocktakes/${id}/reconcile`),
   devices: () => get<{ id: string; name: string; kind: string; config: Record<string, unknown> }[]>('/api/devices'),
-  printLabel: (itemIds: string[], printerDeviceId: string) => post<{ itemId: string; ok: boolean; error?: string; epc?: string }[]>('/api/labels/print', { itemIds, printerDeviceId }),
+  printLabel: (itemIds: string[], printerDeviceId: string) => post<{ itemId: string; jobId: string; ok: boolean; status: string; error?: string; epc?: string; reason?: string }[]>('/api/labels/print', { itemIds, printerDeviceId }),
   labelZpl: (itemId: string) => api<string>(`/api/labels/items/${itemId}`),
 };

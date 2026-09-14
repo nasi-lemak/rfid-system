@@ -15,15 +15,24 @@ public sealed class LlrpClient : IAsyncDisposable
     private CancellationTokenSource? _cts;
 
     public event Action<IReadOnlyList<LlrpTag>>? TagsReported;
+    public event Action<int, bool>? GpiChanged;
     public event Action<string>? Log;
     public bool Connected => _tcp?.Connected == true;
     public TimeSpan ResponseTimeout { get; set; } = TimeSpan.FromSeconds(10);
+    public ReaderCapabilities? Capabilities { get; private set; }
+    public LlrpReaderOptions Options { get; private set; } = new();
+    public DateTime? ConnectedAt { get; private set; }
+    public long TagsReceived { get; private set; }
 
     public LlrpClient(string host, int port = 5084, uint roSpecId = 1) { _host = host; _port = port; _roSpecId = roSpecId; }
 
     /// <summary>Connects, waits for the reader's connection event, resets config and starts the inventory.</summary>
-    public async Task StartAsync(CancellationToken ct = default)
+    public Task StartAsync(CancellationToken ct = default) => StartAsync(new LlrpReaderOptions(), ct);
+
+    /// <summary>Connect, read capabilities, apply power/session/antenna configuration and start a continuous or GPI-triggered inventory.</summary>
+    public async Task StartAsync(LlrpReaderOptions options, CancellationToken ct = default)
     {
+        Options = options;
         _cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         _tcp = new TcpClient();
         await _tcp.ConnectAsync(_host, _port, ct);
@@ -32,14 +41,33 @@ public sealed class LlrpClient : IAsyncDisposable
         lock (_pending) _pending[LlrpMsg.ReaderEventNotification] = connectEvent;
         _ = Task.Run(() => ReadLoopAsync(_cts.Token), _cts.Token);
         await connectEvent.Task.WaitAsync(ResponseTimeout, ct);
+        ConnectedAt = DateTime.UtcNow;
         Log?.Invoke($"connected to {_host}:{_port}");
-        await ExpectOkAsync(LlrpCodec.SetReaderConfig(NextId()), LlrpMsg.SetReaderConfigResponse, ct);
+        try
+        {
+            var capsTcs = new TaskCompletionSource<LlrpMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+            lock (_pending) _pending[LlrpParamEx.MsgGetReaderCapabilitiesResponse] = capsTcs;
+            await SendAsync(LlrpConfigCodec.GetReaderCapabilities(NextId()), ct);
+            var caps = await capsTcs.Task.WaitAsync(ResponseTimeout, ct);
+            Capabilities = LlrpConfigCodec.ParseCapabilities(caps.Body);
+            Log?.Invoke($"{Capabilities.Manufacturer} model {Capabilities.ModelId} fw {Capabilities.Firmware}: {Capabilities.MaxAntennas} antennas, {Capabilities.Gpis} GPI / {Capabilities.Gpos} GPO, {Capabilities.PowerTable.Count} power levels");
+        }
+        catch (TimeoutException) { Log?.Invoke("reader did not answer GET_READER_CAPABILITIES; continuing without power table"); }
+        await ExpectOkAsync(LlrpCodec.SetReaderConfig(NextId(), options.KeepaliveMs), LlrpMsg.SetReaderConfigResponse, ct);
+        if (options.TransmitPowerDbm.HasValue || options.Session != 1 || options.TagPopulation != 32 || options.AntennaIds is { Length: > 0 })
+            await ExpectOkAsync(LlrpConfigCodec.SetAntennaConfig(NextId(), options, Capabilities), LlrpMsg.SetReaderConfigResponse, ct);
         await ExpectOkAsync(LlrpCodec.DeleteRoSpec(NextId(), 0), LlrpMsg.DeleteRoSpecResponse, ct);
-        await ExpectOkAsync(LlrpCodec.AddRoSpec(NextId(), _roSpecId), LlrpMsg.AddRoSpecResponse, ct);
+        var addRoSpec = options.GpiStartPort is int gpi
+            ? LlrpConfigCodec.AddRoSpecGpiTriggered(NextId(), _roSpecId, gpi, (ushort)options.ReportEveryNTags, options.AntennaIds)
+            : LlrpCodec.AddRoSpec(NextId(), _roSpecId, (ushort)options.ReportEveryNTags, options.AntennaIds);
+        await ExpectOkAsync(addRoSpec, LlrpMsg.AddRoSpecResponse, ct);
         await ExpectOkAsync(LlrpCodec.EnableRoSpec(NextId(), _roSpecId), LlrpMsg.EnableRoSpecResponse, ct);
-        await ExpectOkAsync(LlrpCodec.StartRoSpec(NextId(), _roSpecId), LlrpMsg.StartRoSpecResponse, ct);
-        Log?.Invoke("inventory started");
+        if (options.GpiStartPort == null) await ExpectOkAsync(LlrpCodec.StartRoSpec(NextId(), _roSpecId), LlrpMsg.StartRoSpecResponse, ct);
+        Log?.Invoke(options.GpiStartPort is int g ? $"inventory armed on GPI {g}" : "inventory started");
     }
+
+    /// <summary>Writes a general-purpose output (stack light, buzzer, gate).</summary>
+    public Task SetGpoAsync(int port, bool state, CancellationToken ct = default) => ExpectOkAsync(LlrpConfigCodec.SetGpo(NextId(), port, state), LlrpMsg.SetReaderConfigResponse, ct);
 
     private uint NextId() => Interlocked.Increment(ref _msgId);
 
@@ -74,8 +102,17 @@ public sealed class LlrpClient : IAsyncDisposable
                 var msg = new LlrpMessage(type, id, body);
                 switch (type)
                 {
-                    case LlrpMsg.RoAccessReport: { var tags = LlrpCodec.ParseRoAccessReport(body); if (tags.Count > 0) TagsReported?.Invoke(tags); break; }
+                    case LlrpMsg.RoAccessReport: { var tags = LlrpCodec.ParseRoAccessReport(body); if (tags.Count > 0) { TagsReceived += tags.Count; TagsReported?.Invoke(tags); } break; }
                     case LlrpMsg.Keepalive: await SendAsync(LlrpCodec.KeepaliveAck(id), ct); break;
+                    case LlrpMsg.ReaderEventNotification:
+                    {
+                        var gpis = LlrpConfigCodec.ParseGpiEvents(body);
+                        foreach (var (port, high) in gpis) GpiChanged?.Invoke(port, high);
+                        TaskCompletionSource<LlrpMessage>? evTcs;
+                        lock (_pending) { if (_pending.TryGetValue(type, out evTcs)) _pending.Remove(type); }
+                        evTcs?.TrySetResult(msg);
+                        break;
+                    }
                     default:
                     {
                         TaskCompletionSource<LlrpMessage>? tcs;

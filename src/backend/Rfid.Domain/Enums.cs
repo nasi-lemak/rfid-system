@@ -35,7 +35,7 @@ public enum LineResult { Ok, Unknown, Unexpected, Rejected }
 public enum ItemEventType
 {
     Created, Seen, Moved, CustodyChanged, StateChanged, Counted, QuantityChanged,
-    Packed, Unpacked, Inspected, Maintained, Disposed, Commissioned, Alert
+    Packed, Unpacked, Inspected, Maintained, Disposed, Commissioned, Alert, LabelPrinted, Imported
 }
 
 public enum ReadSource { Handheld, Fixed, Manual }
@@ -53,3 +53,7 @@ public enum AlertStatus { Open, Acknowledged, Closed }
 public enum IntegrationFormat { Generic, SapAssetManagement, Dynamics365, Maximo }
 
 public enum IntegrationAuth { None, Bearer, Basic, OAuth2ClientCredentials }
+
+public enum PrintJobStatus { Queued, Printing, Printed, Failed, Cancelled }
+
+public enum PrintReason { Initial, Reprint, Replacement, Batch }

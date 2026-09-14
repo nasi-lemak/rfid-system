@@ -48,10 +48,11 @@ public class LlrpTests
             var s = c.GetStream();
             await s.WriteAsync(LlrpCodec.ReaderEventNotification(1));
             var header = new byte[10];
-            for (var i = 0; i < 5; i++)
+            for (var i = 0; i < 6; i++)
             {
                 await s.ReadExactlyAsync(header); var (type, len, id) = LlrpCodec.DecodeHeader(header);
                 var body = new byte[len - 10]; await s.ReadExactlyAsync(body); received.Add(type);
+                if (type == LlrpMsg.GetReaderCapabilities) { await s.WriteAsync(LlrpConfigCodec.CapabilitiesResponse(id, 2, 25882, 1, "8.0", 2, 2, new[] { (1, 30.0) })); continue; }
                 var respType = type switch { LlrpMsg.SetReaderConfig => LlrpMsg.SetReaderConfigResponse, LlrpMsg.DeleteRoSpec => LlrpMsg.DeleteRoSpecResponse, LlrpMsg.AddRoSpec => LlrpMsg.AddRoSpecResponse, LlrpMsg.EnableRoSpec => LlrpMsg.EnableRoSpecResponse, _ => LlrpMsg.StartRoSpecResponse };
                 await s.WriteAsync(LlrpCodec.EncodeMessage(respType, id, LlrpCodec.Status(0)));
             }
@@ -67,7 +68,7 @@ public class LlrpTests
         await client.StartAsync();
         var tags = await got.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Single(tags); Assert.Equal("3034F8B20001000000000001", tags[0].Epc);
-        Assert.Equal(new ushort[] { LlrpMsg.SetReaderConfig, LlrpMsg.DeleteRoSpec, LlrpMsg.AddRoSpec, LlrpMsg.EnableRoSpec, LlrpMsg.StartRoSpec }, received);
+        Assert.Equal(new ushort[] { LlrpMsg.GetReaderCapabilities, LlrpMsg.SetReaderConfig, LlrpMsg.DeleteRoSpec, LlrpMsg.AddRoSpec, LlrpMsg.EnableRoSpec, LlrpMsg.StartRoSpec }, received);
         await reader.WaitAsync(TimeSpan.FromSeconds(5));
         listener.Stop();
     }

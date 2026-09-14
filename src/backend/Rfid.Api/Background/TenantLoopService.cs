@@ -68,6 +68,16 @@ public class IntegrationDispatcherService : TenantLoopService
     }
 }
 
+public class PrintQueueWorkerService : TenantLoopService
+{
+    public PrintQueueWorkerService(IServiceScopeFactory s, ILogger<PrintQueueWorkerService> l) : base(s, l, TimeSpan.FromSeconds(5)) { }
+    protected override async Task RunForTenantAsync(IServiceProvider sp, Guid tenantId, CancellationToken ct)
+    {
+        var n = await sp.GetRequiredService<PrintQueueService>().ProcessAsync(DateTime.UtcNow, ct);
+        if (n > 0) Log.LogInformation("Printed {Count} label(s) for tenant {Tenant}", n, tenantId);
+    }
+}
+
 public class HttpIntegrationTransport : IIntegrationTransport
 {
     private readonly HttpClient _http;

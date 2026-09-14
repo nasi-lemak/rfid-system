@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { useDevices, useItem, useItemEvents, useLocations, useParties } from '../api/hooks';
+import { useDevices, useItem, useItemEvents, useLocations, useParties, usePrintJobs } from '../api/hooks';
 import { get } from '../api/client';
 import { post } from '../api/client';
 import { Badge, ErrorBox, LifecycleView, Modal, fmt, toneForStatus } from '../components/ui';
@@ -19,8 +19,9 @@ export default function ItemDetail() {
   const printers = devices.data?.filter((d) => d.kind === 'Printer') ?? [];
   const [zpl, setZpl] = useState<string | null>(null);
   const [printMsg, setPrintMsg] = useState<string | null>(null);
+  const jobs = usePrintJobs({ itemId: id, take: 20 });
   const showLabel = async () => { try { setZpl(await get<string>(`/api/labels/items/${id}`)); } catch (e) { setZpl((e as Error).message); } };
-  const print = async (printerId: string) => { const r = await post<{ ok: boolean; error?: string }[]>('/api/labels/print', { itemIds: [id], printerDeviceId: printerId }); setPrintMsg(r[0]?.ok ? 'Label sent to printer' : `Print failed: ${r[0]?.error}`); };
+  const print = async (printerId: string) => { const r = await post<{ ok: boolean; status: string; error?: string; reason: string }[]>('/api/labels/print', { itemIds: [id], printerDeviceId: printerId }); setPrintMsg(r[0]?.ok ? `Label printed (${r[0].reason})` : `${r[0]?.status}: ${r[0]?.error ?? 'queued for retry'}`); jobs.refetch(); };
   if (error) return <ErrorBox error={error} />;
   if (!data) return <div className="muted">Loading…</div>;
   const i = data.item;
@@ -63,6 +64,7 @@ export default function ItemDetail() {
           <ErrorBox error={bindErr} />
           <div className="row" style={{ marginTop: 8 }}><button className="sm" disabled={i.tags.length === 0} onClick={showLabel}>Label (ZPL)</button>{printers.map((p) => <button key={p.id} className="sm" disabled={i.tags.length === 0} onClick={() => print(p.id)}>🖨 {p.name}</button>)}{printers.length === 0 && <span className="muted small">add a Printer device to print</span>}</div>
           {printMsg && <div className="small muted">{printMsg}</div>}
+          {jobs.data && jobs.data.length > 0 && <div className="small muted" style={{ marginTop: 6 }}>Print history: {jobs.data.slice(0, 5).map((j) => `${fmt.d(j.requestedAt)} ${j.reason} ${j.status}`).join(' · ')}</div>}
           {zpl && <pre className="mono small" style={{ whiteSpace: 'pre-wrap', maxHeight: 160, overflow: 'auto', background: 'var(--bg)', padding: 8, borderRadius: 6 }}>{zpl}</pre>}
           <h3 style={{ marginTop: 16 }}>Attributes</h3>
           <dl className="kv">{Object.entries(i.attributes ?? {}).map(([k, v]) => <><dt key={k + 'k'}>{k}</dt><dd key={k + 'v'}>{String(v ?? '')}</dd></>)}</dl>
