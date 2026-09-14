@@ -97,8 +97,81 @@ Stg = ProcessStage (lifecycle step), Com = Commission, Adj = Adjust.
 | Tree/Plant Tracking | Plant (attributes: species) | Seedling→Growing→Sold | Stg Cnt Xfr | Nursery bed = location |
 | Research Animal Mgmt | Animal, Cage (container) | per-protocol | Pck Unp Stg | Experiment records in Data |
 
-Templates provisioned in v1 (`SolutionTemplates` seed): Asset Management,
-Inventory, Warehouse, Tool Tracking, Linen/Laundry, PPE, Medical Assets,
-Surgical Instruments, Evidence, Library, Retail (incl. loss prevention),
-Returnable Assets, Manufacturing WIP, Rental, Keg/Cylinder, Personnel/Muster.
-Others are configuration-only variants of these and can be added as JSON.
+## Built-in templates (23) and the systems they cover
+
+| Template code | Covers |
+|---|---|
+| `asset-management` | Asset Management, Fixed Asset Tracking, IT Asset Management, Equipment Management, Smart Cabinet |
+| `inventory` | Inventory Management, Medical Consumables, Pharmaceutical Inventory, MRO Inventory, Cold Storage Inventory, Smart Shelf |
+| `warehouse` | Warehouse Management, Logistics Cross-Dock, Shipment Verification, Loading Dock, Yard Management, Finished Goods, Pallet Tracking |
+| `tool-tracking` | Tool Tracking, Aviation Tool Control (FOD), Parts Kitting |
+| `linen-laundry` | Linen Management, Laundry Management, Uniform Management, Hospital Linen |
+| `ppe-inspection` | PPE Management, Gas Cylinder Management, inspection-driven equipment |
+| `medical-assets` | Medical Asset Tracking, Surgical Instrument Tracking |
+| `chain-of-custody` | Evidence Management, Laboratory Sample Tracking, Document/File Tracking |
+| `library` | Library Management |
+| `retail` | Retail Inventory, Fashion/Apparel, Smart Fitting Room, Retail Loss Prevention, Jewellery / High-Value |
+| `returnable-assets` | Returnable Asset Management, Pallet Tracking, Reusable Packaging, Keg Management, Rental Equipment |
+| `manufacturing` | Manufacturing WIP, Production Tracking, Kanban / Replenishment, Raw Material, Quality Control, Parts Kitting, Automotive Parts |
+| `people-presence` | Personnel Tracking, Visitor Management, Emergency Muster, Access Control, Race Timing, Room/Zone Presence |
+| `livestock-agri` | Livestock Management, Agricultural Asset Tracking, Tree/Plant Tracking, Research Animal Management |
+| `museum-artwork` | Museum Collection, Artwork Management |
+| `hospitality` | Hotel Asset Management, Hotel Minibar Inventory (+ `linen-laundry` for Hotel Linen) |
+| `food-coldchain` | Food Tray Management, Food Production Tracking, Cold-Chain Container Tracking |
+| `fleet-aviation` | Vehicle Yard Management, Fleet Equipment, Tyre Management, Aircraft Parts Tracking |
+| `waste-management` | Waste Bin Management, Waste Tracking |
+| `postal-baggage` | Postal/Parcel Sorting, Baggage Tracking, Container Tracking (ULDs, cages) |
+| `datacentre-cables` | Data Centre Asset Tracking, Cable/Reel Management |
+| `field-industrial` | Construction Asset Tracking, Oil & Gas Equipment, Offshore Asset Management, Marine Equipment, Maintenance Management |
+| `education-events-sports` | School Asset Management, Event Equipment Management, Sports Equipment Management, Order Fulfilment Verification (case completeness) |
+
+Casino chips (HF tags) use `inventory`/`retail` with `Technology = HfNfc`; Smart Locker is `asset-management` with a `Locker` location and a cabinet reader.
+
+## Demo scenarios (seed data)
+
+Every template ships with a **demo scenario** (`src/backend/Rfid.Infrastructure/Persistence/Demo/DemoScenarios.cs`):
+a realistic site with a location hierarchy, parties, tagged items (real GS1 SGTIN-96 EPCs, one
+company prefix per scenario), fixed readers/portals/cabinets with antenna→zone mapping, and a few days
+of history. History is **replayed through the real `OperationProcessor` and `ReadIngestionService`**,
+so lifecycle transitions, chain-of-custody events, rule evaluation and alerts are produced exactly as
+they would be in production — e.g. a checked-out torque wrench read by the hangar exit gate raises the
+*FOD* critical alert; an `OnShelf` book at the library gate raises *anti-theft*; a `Quarantined`
+gearbox seen at an assembly station raises *left quarantine*.
+
+| Scenario site | Template |
+|---|---|
+| Northgate Head Office | asset-management |
+| City Hospital Pharmacy & Stores | inventory |
+| Midlands Distribution Centre | warehouse |
+| Hangar 3 – Line Maintenance | tool-tracking |
+| St Mary's Hospital Linen Service | linen-laundry |
+| Industrial Gases & Safety Depot | ppe-inspection |
+| General Hospital – Equipment Library & CSSD | medical-assets |
+| County Police Evidence Store & Forensic Lab | chain-of-custody |
+| City Central Library | library |
+| Flagship Store – High Street | retail |
+| Ridgeway Brewery & Plant Hire | returnable-assets |
+| Plant 2 – Gearbox Line | manufacturing |
+| Riverside Campus & Riverside 10K | people-presence |
+| Hillside Farm, Nursery & Research Unit | livestock-agri |
+| National Museum of Design | museum-artwork |
+| Grand Hotel | hospitality |
+| Central Production Kitchen & Cold Logistics | food-coldchain |
+| Northern Depot & Part-145 MRO | fleet-aviation |
+| Metro Waste Services Depot | waste-management |
+| Airport T2 Baggage Hall & Mail Hub | postal-baggage |
+| DC-East | datacentre-cables |
+| North Sea Supply Base | field-industrial |
+| Riverside Academy & Events | education-events-sports |
+
+How to load them:
+- **At startup** – `Seed:Scenarios` in `appsettings.json` (or env `Seed__Scenarios`): `all` (default),
+  `none`, or a comma list such as `linen-laundry,medical-assets`. Runs once, when the demo tenant is created.
+- **Per tenant, on demand** – `POST /api/templates/{code}/demo` (Admin) or the **Load demo data** button
+  on the *Solution templates* page. Idempotent: a scenario whose site already exists is skipped.
+- Demo device tokens: `demo-handheld-token` (Northgate handheld), `demo-portal-token` (MDC dock door 1),
+  `demo-gate-token` (Northgate entrance gate).
+
+Writing a new scenario is declarative — see the `Scenario` record in `DemoModel.cs`. The unit test
+`DemoSeedTests` replays every scenario and fails on any rejected history step, so lifecycle mistakes in
+seed data are caught at build time.

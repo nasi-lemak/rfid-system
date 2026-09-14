@@ -154,8 +154,8 @@ public static class SolutionTemplateCatalog
                 Rules =
                 {
                     Alert("Inspection due", ItemEventType.Seen, Severity.Warning, "{item.name} inspection due", C("item.daysUntilInspection", "lt", 0)),
-                    Alert("PPE expired", ItemEventType.CustodyChanged, Severity.Critical, "Expired {item.name} issued", C("item.daysUntilExpiry", "lt", 0)),
-                    Alert("Failed PPE issued", ItemEventType.CustodyChanged, Severity.Critical, "{item.name} failed inspection and was issued", C("item.state", "eq", "Failed")),
+                    Alert("PPE expired", ItemEventType.CustodyChanged, Severity.Critical, "Expired {item.name} issued", C("item.hasCustodian", "eq", true), C("item.daysUntilExpiry", "lt", 0)),
+                    Alert("Failed PPE issued", ItemEventType.CustodyChanged, Severity.Critical, "{item.name} failed inspection and was issued", C("item.hasCustodian", "eq", true), C("item.state", "eq", "Failed")),
                 },
                 Operations = { OperationType.Issue, OperationType.Return, OperationType.Inspect, OperationType.Dispatch, OperationType.ProcessStage, OperationType.Dispose, OperationType.Commission },
             }
@@ -179,7 +179,7 @@ public static class SolutionTemplateCatalog
                 Rules =
                 {
                     Alert("Dirty device in clean area", ItemEventType.Moved, Severity.Critical, "{item.name} is '{item.state}' but entered {toLocation.name}", C("item.state", "in", "Dirty,Cleaning"), C("toLocation.clean", "eq", true)),
-                    Alert("Tray issued unsterilised", ItemEventType.CustodyChanged, Severity.Critical, "Tray {item.name} issued while '{item.state}'", C("itemType.code", "eq", "TRAY"), C("item.state", "ne", "InUse")),
+                    Alert("Tray issued unsterilised", ItemEventType.CustodyChanged, Severity.Critical, "Tray {item.name} issued while '{item.state}'", C("itemType.code", "eq", "TRAY"), C("item.hasCustodian", "eq", true), C("item.state", "ne", "InUse")),
                 },
                 Operations = { OperationType.Issue, OperationType.Return, OperationType.ProcessStage, OperationType.Transfer, OperationType.Count, OperationType.Pack, OperationType.Unpack, OperationType.Maintain, OperationType.Commission },
             }
@@ -336,6 +336,206 @@ public static class SolutionTemplateCatalog
                     new ItemType { Name = "Cage", Code = "CAGE", IsContainer = true, AttributeSchema = { A("protocol") } },
                 },
                 Operations = { OperationType.Transfer, OperationType.Inspect, OperationType.Maintain, OperationType.ProcessStage, OperationType.Dispatch, OperationType.Pack, OperationType.Unpack, OperationType.Count, OperationType.Commission },
+            }
+        },
+        new SolutionTemplate
+        {
+            Code = "museum-artwork", Name = "Museum Collections & Artwork", Vertical = "Culture",
+            Description = "Artefacts, paintings, exhibits, crates: storage, display, loans, packing and transport with full movement history.",
+            Definition = new()
+            {
+                ItemTypes =
+                {
+                    new ItemType { Name = "Artefact", Code = "ARTEFACT", AttributeSchema = { A("accessionNo", required: true), A("period"), A("material"), A("insuredValue", "number") },
+                        Lifecycle = Lc("InStorage", new[] { "InStorage", "OnDisplay", "OnLoan", "Conservation", "Deaccessioned" },
+                            T("*", "OnDisplay", OperationType.Transfer), T("OnDisplay", "InStorage", OperationType.Return), T("*", "OnLoan", OperationType.Dispatch), T("OnLoan", "InStorage", OperationType.Return), T("*", "Conservation", OperationType.Maintain), T("Conservation", "InStorage", OperationType.Return), T("*", "Deaccessioned", OperationType.Dispose)) },
+                    new ItemType { Name = "Artwork", Code = "ARTWORK", AttributeSchema = { A("artist"), A("title", required: true), A("year"), A("insuredValue", "number") },
+                        Lifecycle = Lc("InStorage", new[] { "InStorage", "Packed", "InTransit", "Installed" },
+                            T("InStorage", "Packed", OperationType.Pack), T("Packed", "InTransit", OperationType.Dispatch), T("*", "Installed", OperationType.Unpack), T("*", "InStorage", OperationType.Return)) },
+                    new ItemType { Name = "Art Crate", Code = "ART-CRATE", IsContainer = true, AttributeSchema = { A("dimensions"), A("climateControlled", "bool") } },
+                },
+                Rules =
+                {
+                    Alert("Artefact left building without loan", ItemEventType.Moved, Severity.Critical, "{item.name} passed exit while '{item.state}'", C("data.direction", "eq", "Out"), C("item.state", "in", "InStorage,OnDisplay,Conservation")),
+                    Alert("High-value artefact missing from gallery count", ItemEventType.Counted, Severity.Critical, "{item.name} ({item.attributes.accessionNo}) not found", C("data.result", "eq", "Missing")),
+                },
+                Operations = { OperationType.Transfer, OperationType.Return, OperationType.Dispatch, OperationType.Pack, OperationType.Unpack, OperationType.Maintain, OperationType.Count, OperationType.Commission },
+            }
+        },
+        new SolutionTemplate
+        {
+            Code = "hospitality", Name = "Hotel Assets & Minibar", Vertical = "Hospitality",
+            Description = "Room assets (TVs, appliances, furniture), minibar stock and shrinkage: room assignment, transfer, maintenance, consumption and replenishment. Combine with Linen & Laundry.",
+            Definition = new()
+            {
+                ItemTypes =
+                {
+                    new ItemType { Name = "Room Asset", Code = "HOTEL-ASSET", AttributeSchema = { A("category", "select", false, "TV", "Minibar fridge", "Safe", "Hairdryer", "Iron", "Furniture", "Artwork"), A("brand"), A("room") },
+                        Lifecycle = Lc("InRoom", new[] { "InRoom", "InStore", "Maintenance", "Retired" }, T("*", "InRoom", OperationType.Transfer), T("*", "InStore", OperationType.Return), T("*", "Maintenance", OperationType.Maintain), T("*", "Retired", OperationType.Dispose)) },
+                    new ItemType { Name = "Minibar Stock", Code = "MINIBAR", Category = ItemCategory.Quantity, Unit = "ea", ReorderPoint = 2, TracksExpiry = true, AttributeSchema = { A("sku", required: true), A("price", "number") } },
+                },
+                Rules = { Alert("Minibar needs replenishment", ItemEventType.QuantityChanged, Severity.Info, "{item.name} in {toLocation.name} is down to {item.quantity}", C("item.quantity", "lte", 2)) },
+                LocationKinds = { LocationKind.Floor, LocationKind.Room },
+                Operations = { OperationType.Transfer, OperationType.Return, OperationType.Maintain, OperationType.Count, OperationType.Adjust, OperationType.Dispose, OperationType.Commission },
+            }
+        },
+        new SolutionTemplate
+        {
+            Code = "food-coldchain", Name = "Food Trays, Food Production & Cold Chain", Vertical = "Food",
+            Description = "Meal trays circulating kitchen ↔ wards, production batches by stage, and cold-chain containers with temperature excursions.",
+            Definition = new()
+            {
+                ItemTypes =
+                {
+                    new ItemType { Name = "Meal Tray", Code = "FOOD-TRAY", TracksCycles = true, MaxCycles = 2000,
+                        Lifecycle = Lc("Kitchen", new[] { "Kitchen", "Delivered", "Returned", "Washing", "Retired" }, T("Kitchen", "Delivered", OperationType.Dispatch), T("Delivered", "Returned", OperationType.Return), T("Returned", "Washing", OperationType.ProcessStage, true), T("Washing", "Kitchen", OperationType.ProcessStage), T("*", "Retired", OperationType.Dispose)) },
+                    new ItemType { Name = "Production Batch", Code = "FOOD-BATCH", IsContainer = true, TracksExpiry = true, AttributeSchema = { A("product", required: true), A("allergens") },
+                        Lifecycle = Lc("Prepared", new[] { "Prepared", "Cooking", "Chilling", "Packed", "Shipped", "Recalled" }, T("Prepared", "Cooking", OperationType.ProcessStage), T("Cooking", "Chilling", OperationType.ProcessStage), T("Chilling", "Packed", OperationType.ProcessStage), T("Packed", "Shipped", OperationType.Dispatch), T("*", "Recalled", OperationType.ProcessStage)) },
+                    new ItemType { Name = "Cold-Chain Container", Code = "COLD-CONTAINER", IsContainer = true, AttributeSchema = { A("minTempC", "number"), A("maxTempC", "number"), A("lastTempC", "number"), A("tempExcursion", "bool") },
+                        Lifecycle = Lc("Loaded", new[] { "Loaded", "InTransit", "Delivered", "Returned" }, T("Loaded", "InTransit", OperationType.Dispatch), T("InTransit", "Delivered", OperationType.Receive), T("*", "Returned", OperationType.Return), T("Returned", "Loaded", OperationType.Pack)) },
+                },
+                Rules =
+                {
+                    Alert("Cold-chain temperature excursion", ItemEventType.Moved, Severity.Critical, "Container {item.identifier} arrived with a temperature excursion ({item.attributes.lastTempC} °C)", C("data.dispatch", "notexists", null), C("item.attributes.tempExcursion", "eq", true)),
+                    Alert("Expired batch shipped", ItemEventType.Moved, Severity.Critical, "Batch {item.name} shipped past expiry", C("data.dispatch", "eq", true), C("item.daysUntilExpiry", "lt", 0)),
+                },
+                Operations = { OperationType.Dispatch, OperationType.Return, OperationType.ProcessStage, OperationType.Receive, OperationType.Pack, OperationType.Unpack, OperationType.Count, OperationType.Commission },
+            }
+        },
+        new SolutionTemplate
+        {
+            Code = "fleet-aviation", Name = "Vehicles, Fleet, Tyres & Aircraft Parts", Vertical = "Mobility",
+            Description = "Yard-managed vehicles and trailers, fleet equipment, tyre lifecycle and aircraft rotables with maintenance custody.",
+            Definition = new()
+            {
+                ItemTypes =
+                {
+                    new ItemType { Name = "Vehicle", Code = "VEHICLE", IsContainer = true, AttributeSchema = { A("plate", required: true), A("make"), A("model"), A("vin") },
+                        Lifecycle = Lc("Arrived", new[] { "Arrived", "Parked", "InWorkshop", "Dispatched" }, T("*", "Parked", OperationType.Transfer), T("*", "InWorkshop", OperationType.Maintain), T("InWorkshop", "Parked", OperationType.Return), T("*", "Dispatched", OperationType.Dispatch), T("Dispatched", "Arrived", OperationType.Receive)) },
+                    new ItemType { Name = "Tyre", Code = "TYRE", TracksCycles = true, MaxCycles = 6, AttributeSchema = { A("size"), A("dot"), A("treadMm", "number") },
+                        Lifecycle = Lc("New", new[] { "New", "Fitted", "Removed", "Retread", "Scrapped" }, T("*", "Fitted", OperationType.Pack, true), T("Fitted", "Removed", OperationType.Unpack), T("Removed", "Retread", OperationType.Maintain), T("Retread", "New", OperationType.Return), T("*", "Scrapped", OperationType.Dispose)) },
+                    new ItemType { Name = "Aircraft Rotable", Code = "ROTABLE", RequiresInspection = true, InspectionIntervalDays = 365, AttributeSchema = { A("partNumber", required: true), A("serialNumber"), A("hoursSinceOverhaul", "number") },
+                        Lifecycle = Lc("Serviceable", new[] { "Serviceable", "Installed", "Unserviceable", "InRepair", "Quarantined" }, T("Serviceable", "Installed", OperationType.Pack), T("Installed", "Unserviceable", OperationType.Unpack), T("Unserviceable", "InRepair", OperationType.Maintain), T("InRepair", "Serviceable", OperationType.Inspect), T("*", "Quarantined", OperationType.Inspect)) },
+                    new ItemType { Name = "Aircraft", Code = "AIRCRAFT", IsContainer = true, AttributeSchema = { A("registration", required: true), A("type"), A("operator") } },
+                    new ItemType { Name = "Fleet Equipment", Code = "FLEET-EQUIP", RequiresInspection = true, InspectionIntervalDays = 90, AttributeSchema = { A("type"), A("vehicle") } },
+                },
+                Rules =
+                {
+                    Alert("Vehicle left yard without dispatch", ItemEventType.Moved, Severity.Warning, "{item.name} ({item.attributes.plate}) passed the gate while '{item.state}'", C("data.direction", "eq", "Out"), C("itemType.code", "eq", "VEHICLE"), C("item.state", "ne", "Dispatched")),
+                    Alert("Unserviceable part on aircraft", ItemEventType.Packed, Severity.Critical, "{item.name} fitted while '{item.state}'", C("itemType.code", "eq", "ROTABLE"), C("item.state", "in", "Unserviceable,Quarantined")),
+                },
+                LocationKinds = { LocationKind.Yard, LocationKind.Gate, LocationKind.Vehicle },
+                Operations = { OperationType.Receive, OperationType.Transfer, OperationType.Dispatch, OperationType.Maintain, OperationType.Return, OperationType.Pack, OperationType.Unpack, OperationType.Inspect, OperationType.Dispose, OperationType.Commission },
+            }
+        },
+        new SolutionTemplate
+        {
+            Code = "waste-management", Name = "Waste Bins & Waste Tracking", Vertical = "Waste",
+            Description = "Bin ownership and collection events read by truck-mounted antennas; hazardous waste containers with collection → treatment → disposal chain of custody.",
+            Definition = new()
+            {
+                ItemTypes =
+                {
+                    new ItemType { Name = "Waste Bin", Code = "WASTE-BIN", AttributeSchema = { A("owner"), A("sizeL", "number"), A("stream", "select", false, "General", "Recycling", "Organic", "Glass") },
+                        Lifecycle = Lc("Deployed", new[] { "Deployed", "Collected", "Damaged", "Withdrawn" }, T("*", "Collected", OperationType.Count), T("Collected", "Deployed", OperationType.Return), T("*", "Damaged", OperationType.Inspect), T("*", "Withdrawn", OperationType.Dispose)) },
+                    new ItemType { Name = "Waste Container", Code = "WASTE-CONTAINER", AttributeSchema = { A("wasteCode", required: true), A("hazardous", "bool"), A("consignmentNote") },
+                        Lifecycle = Lc("Filled", new[] { "Filled", "Collected", "InTransit", "Treated", "Disposed" }, T("Filled", "Collected", OperationType.Issue), T("Collected", "InTransit", OperationType.Dispatch), T("InTransit", "Treated", OperationType.ProcessStage), T("Treated", "Disposed", OperationType.Dispose)) },
+                },
+                Rules = { Alert("Hazardous container disposed without treatment", ItemEventType.Disposed, Severity.Critical, "{item.name} disposed from state '{event.fromState}'", C("item.attributes.hazardous", "eq", true), C("event.fromState", "ne", "Treated")) },
+                Operations = { OperationType.Count, OperationType.Return, OperationType.Issue, OperationType.Dispatch, OperationType.ProcessStage, OperationType.Inspect, OperationType.Dispose, OperationType.Commission },
+            }
+        },
+        new SolutionTemplate
+        {
+            Code = "postal-baggage", Name = "Postal Sorting & Baggage Tracking", Vertical = "Transport",
+            Description = "Mail bags, cages and parcels routed by portal reads; airport bags through check-in, loading, transfer and arrival.",
+            Definition = new()
+            {
+                ItemTypes =
+                {
+                    new ItemType { Name = "Bag (airline)", Code = "BAG", AttributeSchema = { A("pnr"), A("flight"), A("passenger"), A("destination") },
+                        Lifecycle = Lc("CheckedIn", new[] { "CheckedIn", "Sorted", "Loaded", "Transferred", "Arrived", "Delivered", "Mishandled" },
+                            T("CheckedIn", "Sorted", OperationType.ProcessStage), T("Sorted", "Loaded", OperationType.Pack), T("Loaded", "Transferred", OperationType.ProcessStage), T("*", "Arrived", OperationType.Receive), T("Arrived", "Delivered", OperationType.Issue), T("*", "Mishandled", OperationType.ProcessStage)) },
+                    new ItemType { Name = "Mail Cage", Code = "MAIL-CAGE", IsContainer = true, AttributeSchema = { A("route") } },
+                    new ItemType { Name = "Parcel", Code = "PARCEL", AttributeSchema = { A("trackingNo", required: true), A("destination"), A("service") },
+                        Lifecycle = Lc("Accepted", new[] { "Accepted", "InSort", "OutForDelivery", "Delivered", "Returned" }, T("Accepted", "InSort", OperationType.Receive), T("InSort", "OutForDelivery", OperationType.Dispatch), T("OutForDelivery", "Delivered", OperationType.Issue), T("*", "Returned", OperationType.Return)) },
+                    new ItemType { Name = "Unit Load Device", Code = "ULD", IsContainer = true, AttributeSchema = { A("uldCode"), A("flight") } },
+                },
+                Rules = { Alert("Bag mishandled", ItemEventType.StateChanged, Severity.Critical, "Bag {item.identifier} ({item.attributes.passenger}, {item.attributes.flight}) flagged as mishandled", C("event.toState", "eq", "Mishandled")) },
+                LocationKinds = { LocationKind.Dock, LocationKind.Gate, LocationKind.Zone },
+                Operations = { OperationType.Receive, OperationType.ProcessStage, OperationType.Pack, OperationType.Unpack, OperationType.Dispatch, OperationType.Issue, OperationType.Return, OperationType.Commission },
+            }
+        },
+        new SolutionTemplate
+        {
+            Code = "datacentre-cables", Name = "Data Centre Assets & Cable Reels", Vertical = "IT Infrastructure",
+            Description = "Servers and network gear audited by rack position; cable drums tracked by remaining length, custody and location.",
+            Definition = new()
+            {
+                ItemTypes =
+                {
+                    new ItemType { Name = "Server / Network Device", Code = "DC-ASSET", AttributeSchema = { A("hostname"), A("rackU"), A("model"), A("owner") },
+                        Lifecycle = Lc("Spare", new[] { "Spare", "Installed", "Decommissioned", "Wiped" }, T("*", "Installed", OperationType.Transfer), T("Installed", "Spare", OperationType.Return), T("*", "Decommissioned", OperationType.ProcessStage), T("Decommissioned", "Wiped", OperationType.Dispose)) },
+                    new ItemType { Name = "Cable Reel", Code = "CABLE-REEL", Category = ItemCategory.Quantity, Unit = "m", ReorderPoint = 50, AttributeSchema = { A("cableType", required: true), A("gauge") } },
+                },
+                Rules =
+                {
+                    Alert("Server left data hall", ItemEventType.Moved, Severity.Critical, "{item.name} ({item.attributes.hostname}) left the data hall while '{item.state}'", C("data.direction", "eq", "Out"), C("itemType.code", "eq", "DC-ASSET"), C("item.state", "eq", "Installed")),
+                    Alert("Cable reel nearly empty", ItemEventType.QuantityChanged, Severity.Info, "{item.name} has {item.quantity} m left", C("item.quantity", "lt", 50)),
+                },
+                LocationKinds = { LocationKind.Rack, LocationKind.Room },
+                Operations = { OperationType.Transfer, OperationType.Return, OperationType.Count, OperationType.Adjust, OperationType.ProcessStage, OperationType.Dispose, OperationType.Commission },
+            }
+        },
+        new SolutionTemplate
+        {
+            Code = "field-industrial", Name = "Construction, Oil & Gas, Offshore & Marine", Vertical = "Industrial",
+            Description = "Yard-to-site transfers, mobilisation/demobilisation, onshore ↔ offshore container movements, vessel equipment and inspection certificates.",
+            Definition = new()
+            {
+                ItemTypes =
+                {
+                    new ItemType { Name = "Site Equipment", Code = "SITE-EQUIP", RequiresInspection = true, InspectionIntervalDays = 180, AttributeSchema = { A("category"), A("certificateNo"), A("owner") },
+                        Lifecycle = Lc("InYard", new[] { "InYard", "OnSite", "Mobilised", "Demobilised", "UnderRepair", "Scrapped" }, T("*", "OnSite", OperationType.Transfer), T("*", "Mobilised", OperationType.Dispatch), T("Mobilised", "Demobilised", OperationType.Return), T("*", "InYard", OperationType.Receive), T("*", "UnderRepair", OperationType.Maintain), T("*", "Scrapped", OperationType.Dispose)) },
+                    new ItemType { Name = "Pipe / Valve", Code = "OG-COMPONENT", AttributeSchema = { A("heatNumber"), A("spec"), A("sizeInch", "number") },
+                        Lifecycle = Lc("InYard", new[] { "InYard", "Mobilised", "Installed", "Returned" }, T("InYard", "Mobilised", OperationType.Dispatch), T("Mobilised", "Installed", OperationType.ProcessStage), T("*", "Returned", OperationType.Return)) },
+                    new ItemType { Name = "Offshore Container (CCU)", Code = "CCU", IsContainer = true, RequiresInspection = true, InspectionIntervalDays = 365, AttributeSchema = { A("ccuNumber", required: true), A("tareKg", "number"), A("dnvCert") },
+                        Lifecycle = Lc("Onshore", new[] { "Onshore", "Offshore", "InTransit" }, T("Onshore", "InTransit", OperationType.Dispatch), T("InTransit", "Offshore", OperationType.Receive), T("Offshore", "InTransit", OperationType.Dispatch), T("InTransit", "Onshore", OperationType.Receive)) },
+                    new ItemType { Name = "Vessel Equipment", Code = "VESSEL-EQUIP", RequiresInspection = true, InspectionIntervalDays = 365, AttributeSchema = { A("solasCategory"), A("vessel") },
+                        Lifecycle = Lc("Ashore", new[] { "Ashore", "OnVessel", "Servicing" }, T("Ashore", "OnVessel", OperationType.Transfer), T("OnVessel", "Ashore", OperationType.Return), T("*", "Servicing", OperationType.Maintain), T("Servicing", "Ashore", OperationType.Return)) },
+                },
+                Rules =
+                {
+                    Alert("Equipment mobilised with expired inspection", ItemEventType.Moved, Severity.Critical, "{item.name} sent offshore with inspection overdue", C("data.dispatch", "eq", true), C("item.daysUntilInspection", "lt", 0)),
+                    Alert("Site equipment missing at count", ItemEventType.Counted, Severity.Warning, "{item.name} missing from site count", C("data.result", "eq", "Missing")),
+                },
+                LocationKinds = { LocationKind.Yard, LocationKind.Vessel, LocationKind.Site, LocationKind.Dock },
+                Operations = { OperationType.Transfer, OperationType.Dispatch, OperationType.Receive, OperationType.Return, OperationType.Pack, OperationType.Unpack, OperationType.Inspect, OperationType.Maintain, OperationType.Count, OperationType.ProcessStage, OperationType.Commission },
+            }
+        },
+        new SolutionTemplate
+        {
+            Code = "education-events-sports", Name = "School, Event & Sports Equipment", Vertical = "Education & Events",
+            Description = "Student/staff device assignment and audits, AV/staging cases packed for venues, sports equipment issue and return.",
+            Definition = new()
+            {
+                ItemTypes =
+                {
+                    new ItemType { Name = "School Device", Code = "SCHOOL-DEVICE", AttributeSchema = { A("assetTag"), A("model"), A("yearGroup") },
+                        Lifecycle = Lc("InStock", new[] { "InStock", "Assigned", "Repair", "Retired" }, T("InStock", "Assigned", OperationType.Issue), T("*", "InStock", OperationType.Return), T("*", "Repair", OperationType.Maintain), T("*", "Retired", OperationType.Dispose)) },
+                    new ItemType { Name = "Event Case", Code = "EVENT-CASE", IsContainer = true, AttributeSchema = { A("contentsList"), A("weightKg", "number") },
+                        Lifecycle = Lc("InStore", new[] { "InStore", "Packed", "AtVenue", "Returned" }, T("InStore", "Packed", OperationType.ProcessStage), T("Packed", "AtVenue", OperationType.Dispatch), T("AtVenue", "Returned", OperationType.Return), T("Returned", "InStore", OperationType.Count)) },
+                    new ItemType { Name = "AV Equipment", Code = "AV-EQUIP", AttributeSchema = { A("category", "select", false, "Speaker", "Mixer", "Light", "Cable", "Microphone", "Screen"), A("serial") } },
+                    new ItemType { Name = "Sports Equipment", Code = "SPORTS-EQUIP", AttributeSchema = { A("sport"), A("size") },
+                        Lifecycle = Lc("InStore", new[] { "InStore", "Issued", "Damaged" }, T("InStore", "Issued", OperationType.Issue), T("Issued", "InStore", OperationType.Return), T("*", "Damaged", OperationType.Inspect)) },
+                },
+                Rules =
+                {
+                    Alert("Case returned incomplete", ItemEventType.Counted, Severity.Warning, "Event case {item.name}: contents missing", C("data.result", "eq", "Missing")),
+                    Alert("Device not returned by student", ItemEventType.Seen, Severity.Info, "{item.name} overdue", C("item.overdue", "eq", true)),
+                },
+                PartyKinds = { PartyKind.Person, PartyKind.Department, PartyKind.Customer },
+                Operations = { OperationType.Issue, OperationType.Return, OperationType.Pack, OperationType.Unpack, OperationType.ProcessStage, OperationType.Dispatch, OperationType.Count, OperationType.Maintain, OperationType.Commission },
             }
         },
     };

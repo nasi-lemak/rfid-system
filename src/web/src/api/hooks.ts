@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { del, get, post, put } from './client';
-import type { Alert, Dashboard, Device, Item, ItemEvent, ItemType, Location, Lookups, OperationRequest, OperationResult, OperationSummary, Paged, Party, Rule, StocktakeDetail, StocktakeListRow, StocktakeSummary, Tag, Template } from './types';
+import type { Alert, Dashboard, SeedResult, Device, Item, ItemEvent, ItemType, Location, Lookups, OperationRequest, OperationResult, OperationSummary, Paged, Party, Rule, StocktakeDetail, StocktakeListRow, StocktakeSummary, Tag, Template } from './types';
 
 export const useLookups = () => useQuery({ queryKey: ['lookups'], queryFn: () => get<Lookups>('/api/lookups'), staleTime: Infinity });
 export const useDashboard = () => useQuery({ queryKey: ['dashboard'], queryFn: () => get<Dashboard>('/api/dashboard'), refetchInterval: 15000 });
@@ -49,6 +49,10 @@ export function useAlertAction() {
 export function useApplyTemplate() {
   const inv = useInvalidate();
   return useMutation({ mutationFn: (code: string) => post<{ itemTypesCreated: number; rulesCreated: number; skipped: number }>(`/api/templates/${code}/apply`), onSuccess: () => inv('templates', 'item-types', 'rules') });
+}
+export function useSeedDemo() {
+  const inv = useInvalidate();
+  return useMutation({ mutationFn: (code: string) => post<SeedResult>(`/api/templates/${code}/demo`), onSuccess: () => inv('templates', 'item-types', 'rules', 'items', 'locations', 'parties', 'devices', 'alerts', 'events', 'operations', 'dashboard', 'tags') });
 }
 export function useSave<T>(path: string, keys: string[]) {
   const inv = useInvalidate();

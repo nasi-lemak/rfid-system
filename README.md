@@ -33,8 +33,14 @@ docker compose up --build
 # Postgres: localhost:5432 (postgres/postgres)
 ```
 
-The API migrates the database and seeds a demo tenant (locations, IT assets, tools, pallets with
-cartons, stock lots, a handheld, a dock-door portal and an exit gate) on first start.
+The API migrates the database and, on first start, seeds a demo tenant with **all 23 solution
+templates installed and a realistic demo site for every vertical** — hospital pharmacy, distribution
+centre, aircraft hangar tool crib, hospital linen service, evidence store, library, flagship store,
+brewery & plant hire, gearbox line, campus & 10K race, farm, museum, hotel, central kitchen & cold
+chain, vehicle depot & MRO, waste depot, airport baggage hall, data centre, offshore supply base,
+school & events — 279 tagged items across 24 sites, 71 readers and several days of replayed history (154 operations, ~1,900 reads) that raise the verticals' own alerts.
+Control it with `Seed__Scenarios=all|none|<comma list>`; load a single vertical into any tenant later
+with **Load demo data** on the *Solution templates* page (`POST /api/templates/{code}/demo`).
 
 ## Quick start (local dev)
 
@@ -68,8 +74,9 @@ stocktakes, ingestion/zone rules, rule engine, EPC encoding).
 - **Rule engine**: `trigger + conditions → CreateAlert | SetState | Webhook`, conditions address
   item fields, derived values (`daysUntilExpiry`, `cyclesRemaining`, `overdue`), item-type, location
   attributes (`toLocation.clean`), party and event data (`data.direction`).
-- **Solution template catalog** (14 templates covering the whole requirements table) with
-  idempotent provisioning; GS1 SGTIN-96 encode/decode; dashboard, event log, alerts, devices,
+- **Solution template catalog** (23 templates covering the whole requirements table, see
+  `docs/SOLUTION-TEMPLATES.md`) with idempotent provisioning and a **demo scenario per template**
+  replayed through the real services; GS1 SGTIN-96 encode/decode; dashboard, event log, alerts, devices,
   users, lookups.
 
 **Web**: dashboard, live reads, alerts, event log, items (filters: expiring, inspection due,

@@ -40,12 +40,19 @@ public class TemplateProvisioner
             result.ItemTypesCreated++;
         }
         var existingRules = await _db.Rules.Select(r => r.Name).ToListAsync(ct);
+        // A template's rules apply to the template's own item types unless the rule already targets a type
+        // explicitly – so several verticals can share one tenant without cross-firing (e.g. retail
+        // loss-prevention must not alert on a hotel bathrobe passing the service exit).
+        var typeCodes = string.Join(",", tpl.Definition.ItemTypes.Select(t => t.Code));
         foreach (var r in tpl.Definition.Rules)
         {
             if (existingRules.Contains(r.Name, StringComparer.OrdinalIgnoreCase)) { result.Skipped++; continue; }
+            var conditions = r.Conditions.Select(c => new RuleCondition { Field = c.Field, Op = c.Op, Value = c.Value }).ToList();
+            if (typeCodes.Length > 0 && !conditions.Any(c => c.Field.StartsWith("itemType.", StringComparison.OrdinalIgnoreCase)))
+                conditions.Insert(0, new RuleCondition { Field = "itemType.code", Op = "in", Value = typeCodes });
             _db.Rules.Add(new Rule
             {
-                TenantId = _ctx.TenantId, Name = r.Name, Enabled = r.Enabled, Trigger = r.Trigger, Conditions = r.Conditions,
+                TenantId = _ctx.TenantId, Name = r.Name, Enabled = r.Enabled, Trigger = r.Trigger, Conditions = conditions,
                 Action = r.Action, Params = r.Params, Severity = r.Severity, Vertical = tpl.Vertical,
             });
             result.RulesCreated++;

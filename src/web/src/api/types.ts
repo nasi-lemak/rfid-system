@@ -43,8 +43,9 @@ export interface StocktakeSummary { id: Guid; name: string; status: string; expe
 export interface StocktakeListRow { summary: StocktakeSummary; locationId: Guid; location?: string; itemTypeId?: Guid | null; startedAt: string; completedAt?: string | null }
 export interface StocktakeDetail extends StocktakeListRow { lines: { id: Guid; itemId?: Guid | null; epc?: string | null; expected: boolean; result: string; foundAt?: string | null; itemName?: string; itemIdentifier?: string; itemType?: string; expectedLocation?: string }[] }
 
-export interface Template { id: Guid; code: string; name: string; vertical: string; description: string; installed: boolean; itemTypes: { name: string; code: string; category: string; isContainer: boolean; tracksCycles: boolean; tracksExpiry: boolean; requiresInspection: boolean; states?: string[] | null; installed: boolean }[]; rules: { name: string; trigger: string; severity: string; action: string }[]; operations: string[]; locationKinds: string[] }
+export interface Template { id: Guid; code: string; name: string; vertical: string; description: string; installed: boolean; hasDemo: boolean; demoSeeded: boolean; demoSite?: string; itemTypes: { name: string; code: string; category: string; isContainer: boolean; tracksCycles: boolean; tracksExpiry: boolean; requiresInspection: boolean; states?: string[] | null; installed: boolean }[]; rules: { name: string; trigger: string; severity: string; action: string }[]; operations: string[]; locationKinds: string[] }
 
+export interface SeedResult { scenario: string; skipped: boolean; locations: number; parties: number; items: number; devices: number; operations: number; rejectedLines: number; reads: number; alerts: number; warnings: string[] }
 export interface Dashboard {
   totals: Record<string, number>;
   byStatus: { status: string; count: number }[]; byType: { type: string; count: number }[]; byState: { state: string; count: number }[]; byLocation: { location: string; count: number }[];

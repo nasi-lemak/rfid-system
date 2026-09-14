@@ -1,21 +1,26 @@
 import { useState } from 'react';
-import { useApplyTemplate, useTemplates } from '../api/hooks';
+import { useApplyTemplate, useSeedDemo, useTemplates } from '../api/hooks';
 import { Badge, ErrorBox } from '../components/ui';
 
 export default function Templates() {
   const { data } = useTemplates();
   const apply = useApplyTemplate();
+  const seed = useSeedDemo();
   const [msg, setMsg] = useState<string | null>(null);
   const run = async (code: string) => { const r = await apply.mutateAsync(code); setMsg(`${code}: ${r.itemTypesCreated} item types and ${r.rulesCreated} rules installed (${r.skipped} already present).`); };
+  const demo = async (code: string) => {
+    const r = await seed.mutateAsync(code);
+    setMsg(r.skipped ? `${code}: demo data already loaded.` : `${code}: loaded ${r.items} tagged items, ${r.locations} locations, ${r.parties} parties, ${r.devices} readers, ${r.operations} historical operations, ${r.reads} reads → ${r.alerts} alert(s).${r.warnings.length ? ' Warnings: ' + r.warnings.join('; ') : ''}`);
+  };
   return (
     <div>
       <div className="topbar"><h1>Solution templates</h1></div>
-      <p className="muted small">A template installs the item types, lifecycles and rules for a vertical. Everything is editable afterwards, and several templates can be combined in one tenant (e.g. a hospital running linen + medical assets + surgical instruments).</p>
+      <p className="muted small">A template installs the item types, lifecycles and rules for a vertical. Everything is editable afterwards, and several templates can be combined in one tenant (e.g. a hospital running linen + medical assets + surgical instruments). <b>Load demo data</b> adds a realistic site for that vertical – locations, parties, tagged items, readers and a few days of history – so you can explore the workflows immediately.</p>
       {msg && <div className="success" style={{ marginBottom: 12 }}>{msg}</div>}
-      <ErrorBox error={apply.error} />
+      <ErrorBox error={apply.error ?? seed.error} />
       <div className="grid cols-2">
         {data?.map((t) => <div className="panel" key={t.code}>
-          <div className="topbar"><div><h2 style={{ marginBottom: 2 }}>{t.name}</h2><span className="muted small">{t.vertical}</span></div>{t.installed ? <Badge tone="ok">Installed</Badge> : <button className="primary sm" disabled={apply.isPending} onClick={() => run(t.code)}>Install</button>}</div>
+          <div className="topbar"><div><h2 style={{ marginBottom: 2 }}>{t.name}</h2><span className="muted small">{t.vertical}</span></div><div className="row">{t.installed ? <Badge tone="ok">Installed</Badge> : <button className="primary sm" disabled={apply.isPending} onClick={() => run(t.code)}>Install</button>}{t.hasDemo && (t.demoSeeded ? <Badge tone="info" >Demo: {t.demoSite}</Badge> : <button className="sm" disabled={seed.isPending} onClick={() => demo(t.code)} title={`Loads "${t.demoSite}" with sample items, readers and history`}>{seed.isPending ? 'Loading…' : 'Load demo data'}</button>)}</div></div>
           <p>{t.description}</p>
           <h3>Item types</h3>
           {t.itemTypes.map((i) => <div key={i.code} style={{ marginBottom: 4 }}><b>{i.name}</b> <span className="muted small">{i.code}</span> {i.installed && <Badge tone="ok">✓</Badge>} {i.isContainer && <Badge tone="info">container</Badge>} {i.tracksCycles && <Badge>cycles</Badge>} {i.tracksExpiry && <Badge>expiry</Badge>} {i.requiresInspection && <Badge>inspection</Badge>}{i.states && i.states.length > 0 && <div className="muted small">{i.states.join(' → ')}</div>}</div>)}

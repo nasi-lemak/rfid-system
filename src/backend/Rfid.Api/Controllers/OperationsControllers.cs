@@ -203,17 +203,21 @@ public class AlertsController : ControllerBase
 [ApiController, Route("api/templates"), Authorize]
 public class TemplatesController : ControllerBase
 {
-    private readonly AppDbContext _db; private readonly TemplateProvisioner _prov;
-    public TemplatesController(AppDbContext db, TemplateProvisioner prov) { _db = db; _prov = prov; }
+    private readonly AppDbContext _db; private readonly TemplateProvisioner _prov; private readonly Rfid.Infrastructure.Persistence.Demo.DemoSeeder _demo;
+    public TemplatesController(AppDbContext db, TemplateProvisioner prov, Rfid.Infrastructure.Persistence.Demo.DemoSeeder demo) { _db = db; _prov = prov; _demo = demo; }
 
     [HttpGet]
     public async Task<IActionResult> List()
     {
         var tpls = await _db.SolutionTemplates.OrderBy(t => t.Vertical).ThenBy(t => t.Name).ToListAsync();
         var existing = await _db.ItemTypes.Select(t => t.Code).ToListAsync();
+        var seededSites = await _db.Locations.Where(l => l.Kind == LocationKind.Site).Select(l => l.Code).ToListAsync();
         return Ok(tpls.Select(t => new
         {
             t.Id, t.Code, t.Name, t.Vertical, t.Description,
+            HasDemo = Rfid.Infrastructure.Persistence.Demo.DemoSeeder.Find(t.Code) != null,
+            DemoSeeded = Rfid.Infrastructure.Persistence.Demo.DemoSeeder.Find(t.Code) is { } sc && seededSites.Contains(sc.SiteCode),
+            DemoSite = Rfid.Infrastructure.Persistence.Demo.DemoSeeder.Find(t.Code)?.Site,
             ItemTypes = t.Definition.ItemTypes.Select(i => new { i.Name, i.Code, i.Category, i.IsContainer, i.TracksCycles, i.TracksExpiry, i.RequiresInspection, States = i.Lifecycle?.States, Installed = existing.Contains(i.Code) }),
             Rules = t.Definition.Rules.Select(r => new { r.Name, r.Trigger, r.Severity, r.Action }),
             Operations = t.Definition.Operations, t.Definition.LocationKinds,
@@ -226,6 +230,15 @@ public class TemplatesController : ControllerBase
 
     [HttpPost("{code}/apply"), Authorize(Policy = "Admin")]
     public async Task<IActionResult> Apply(string code, CancellationToken ct) => Ok(await _prov.ApplyAsync(code, ct));
+
+    /// <summary>Installs the template and loads its demo dataset (site, locations, parties, tagged items, readers, history) into the current tenant.</summary>
+    [HttpPost("{code}/demo"), Authorize(Policy = "Admin")]
+    public async Task<IActionResult> Demo(string code, CancellationToken ct)
+    {
+        var sc = Rfid.Infrastructure.Persistence.Demo.DemoSeeder.Find(code);
+        if (sc == null) return NotFound(new { error = $"No demo scenario for template {code}" });
+        return Ok(await _demo.SeedAsync(sc, ct));
+    }
 }
 
 [ApiController, Route("api/events"), Authorize]

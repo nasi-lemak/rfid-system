@@ -31,6 +31,9 @@ public class RuleEngine
         _db = db; _ctx = ctx; _live = live; _webhooks = webhooks;
     }
 
+    /// <summary>Drops the per-request rule cache, e.g. after a template installed new rules in the same unit of work.</summary>
+    public void InvalidateCache() => _cache = null;
+
     public async Task<List<Alert>> EvaluateAsync(RuleContext c, CancellationToken ct = default)
     {
         _cache ??= await _db.Rules.Where(r => r.Enabled).ToListAsync(ct);

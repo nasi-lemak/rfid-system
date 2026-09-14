@@ -42,6 +42,7 @@ builder.Services.AddScoped<OperationProcessor>();
 builder.Services.AddScoped<StocktakeService>();
 builder.Services.AddScoped<ReadIngestionService>();
 builder.Services.AddScoped<TemplateProvisioner>();
+builder.Services.AddScoped<Rfid.Infrastructure.Persistence.Demo.DemoSeeder>();
 builder.Services.AddSingleton<JwtService>();
 
 var jwtKey = cfg["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key not configured");
@@ -87,7 +88,13 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     if (cfg.GetValue("Database:AutoMigrate", true)) await db.Database.MigrateAsync();
     if (cfg.GetValue("Database:Seed", true))
-        await SeedData.EnsureSeededAsync(db, cfg["Seed:AdminEmail"] ?? "admin@demo.local", cfg["Seed:AdminPassword"] ?? "admin123");
+    {
+        var results = await SeedData.EnsureSeededAsync(scope.ServiceProvider.GetRequiredService<DbContextOptions<AppDbContext>>(),
+            cfg["Seed:AdminEmail"] ?? "admin@demo.local", cfg["Seed:AdminPassword"] ?? "admin123", cfg["Seed:Scenarios"] ?? "all");
+        var log = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+        foreach (var r in results.Where(r => !r.Skipped))
+            log.LogInformation("Seeded scenario {Scenario}: {Items} items, {Ops} operations, {Reads} reads, {Alerts} alerts{Warn}", r.Scenario, r.Items, r.Operations, r.Reads, r.Alerts, r.Warnings.Count > 0 ? " · warnings: " + string.Join("; ", r.Warnings) : "");
+    }
 }
 
 app.Run();
