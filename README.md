@@ -106,7 +106,19 @@ See [`docs/INTEGRATION.md`](docs/INTEGRATION.md).
 - **Scheduled stocktakes** with auto-reconcile, run by a background service.
 - **Template export / import** for per-tenant customisation.
 
+## v1.2
+
+- **Native LLRP client** — connect directly to LLRP 1.0.1 readers (Impinj, Zebra FX, Alien): ROSpec
+  inventory, RO_ACCESS_REPORT streaming, keepalives, auto-reconnect; configured per device (`llrpHost`).
+- **x/y positioning** — antennas as anchors, RSSI → distance (log-distance model), non-linear least
+  squares trilateration; floor-plan view with anchors and live positions.
+- **ERP adapters** — SAP S/4 asset master/transfers, Dynamics 365 customer assets, IBM Maximo MXASSET
+  payload formats plus Bearer / Basic / OAuth2 client-credentials authentication on integration endpoints.
+- **Label designer** — visual mm-based designer compiled to ZPL per item type (text, Code-128, QR,
+  boxes, RFID encode).
+- **Handheld printing** — network printers via the server or Bluetooth mobile printers.
+
 ## Roadmap
 
-Native LLRP client · UWB/BLE trilateration (x/y positioning inside zones) · SAP / Dynamics / Maximo
-adapters on top of the integration endpoint · label designer UI · mobile printing from the handheld.
+Reader configuration management over LLRP (power, sessions, GPIO) · UWB range-based positioning
+field · bidirectional ERP sync (inbound asset master) · label print queues and reprint audit.

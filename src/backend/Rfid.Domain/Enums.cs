@@ -49,3 +49,7 @@ public enum RuleAction { CreateAlert, SetState, Webhook }
 public enum Severity { Info, Warning, Critical }
 
 public enum AlertStatus { Open, Acknowledged, Closed }
+
+public enum IntegrationFormat { Generic, SapAssetManagement, Dynamics365, Maximo }
+
+public enum IntegrationAuth { None, Bearer, Basic, OAuth2ClientCredentials }

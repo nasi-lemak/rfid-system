@@ -24,6 +24,8 @@ public class ItemType : TenantEntity
     public int? UsefulLifeMonths { get; set; }
     /// <summary>Optional ZPL label template; placeholders {name} {identifier} {epc} {type} {location} {attributes.x}.</summary>
     public string? LabelTemplate { get; set; }
+    /// <summary>Label designer document (JSON) that LabelTemplate was compiled from.</summary>
+    public string? LabelDesign { get; set; }
 }
 
 public class AttributeDefinition
@@ -60,6 +62,12 @@ public class Item : TenantEntity
     public DateTime? LastSeenAt { get; set; }
     public Guid? LastSeenLocationId { get; set; }
     public Guid? LastSeenDeviceId { get; set; }
+    /// <summary>Estimated x/y (metres) inside PositionLocationId, from multi-antenna RSSI trilateration.</summary>
+    public double? PositionX { get; set; }
+    public double? PositionY { get; set; }
+    public Guid? PositionLocationId { get; set; }
+    public DateTime? PositionAt { get; set; }
+    public double? PositionAccuracyM { get; set; }
     public decimal? Cost { get; set; }
     public DateOnly? PurchasedAt { get; set; }
     public Dictionary<string, object?> Attributes { get; set; } = new();

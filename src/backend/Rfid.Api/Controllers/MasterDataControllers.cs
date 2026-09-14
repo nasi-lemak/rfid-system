@@ -20,7 +20,7 @@ public class ItemTypesController : ControllerBase
     {
         var types = await _db.ItemTypes.OrderBy(t => t.Name).ToListAsync();
         var counts = await _db.Items.GroupBy(i => i.ItemTypeId).Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count);
-        return Ok(types.Select(t => new { t.Id, t.Name, t.Code, t.Category, t.IsContainer, t.TracksExpiry, t.TracksCycles, t.MaxCycles, t.RequiresInspection, t.InspectionIntervalDays, t.ReorderPoint, t.Unit, t.AttributeSchema, t.Lifecycle, t.Vertical, ItemCount = counts.GetValueOrDefault(t.Id) }));
+        return Ok(types.Select(t => new { t.Id, t.Name, t.Code, t.Category, t.IsContainer, t.TracksExpiry, t.TracksCycles, t.MaxCycles, t.RequiresInspection, t.InspectionIntervalDays, t.ReorderPoint, t.Unit, t.AttributeSchema, t.Lifecycle, t.Vertical, t.UsefulLifeMonths, HasLabelDesign = t.LabelDesign != null, ItemCount = counts.GetValueOrDefault(t.Id) }));
     }
 
     [HttpGet("{id:guid}")]
@@ -40,7 +40,7 @@ public class ItemTypesController : ControllerBase
     {
         var e = await _db.ItemTypes.FindAsync(id); if (e == null) return NotFound();
         e.Name = t.Name; e.Code = t.Code; e.Category = t.Category; e.IsContainer = t.IsContainer; e.TracksExpiry = t.TracksExpiry; e.TracksCycles = t.TracksCycles; e.MaxCycles = t.MaxCycles;
-        e.RequiresInspection = t.RequiresInspection; e.InspectionIntervalDays = t.InspectionIntervalDays; e.ReorderPoint = t.ReorderPoint; e.Unit = t.Unit; e.AttributeSchema = t.AttributeSchema; e.Lifecycle = t.Lifecycle; e.ImageUrl = t.ImageUrl;
+        e.RequiresInspection = t.RequiresInspection; e.InspectionIntervalDays = t.InspectionIntervalDays; e.ReorderPoint = t.ReorderPoint; e.Unit = t.Unit; e.AttributeSchema = t.AttributeSchema; e.Lifecycle = t.Lifecycle; e.ImageUrl = t.ImageUrl; e.UsefulLifeMonths = t.UsefulLifeMonths; if (t.LabelTemplate != null) e.LabelTemplate = t.LabelTemplate;
         await _db.SaveChangesAsync(); return Ok(e);
     }
 
@@ -207,17 +207,18 @@ public class DevicesController : ControllerBase
     private static object Map(Device d) => new
     {
         d.Id, d.Name, d.Kind, d.SerialNumber, d.Model, d.SiteLocationId, d.LastSeenAt, d.Config, HasToken = d.TokenHash != null,
-        Antennas = d.Antennas.OrderBy(a => a.Port).Select(a => new { a.Id, a.Port, a.LocationId, LocationName = a.Location?.Name, a.Direction, a.PowerDbm }),
+        Antennas = d.Antennas.OrderBy(a => a.Port).Select(a => new { a.Id, a.Port, a.LocationId, LocationName = a.Location?.Name, a.Direction, a.PowerDbm, a.X, a.Y, a.RssiAt1m, a.PathLossExponent }),
+        Llrp = Rfid.Api.Background.LlrpReaderService.Endpoint(d) is { } ep ? new { ep.host, ep.port } : null,
     };
 
-    public record AntennaWrite(int Port, Guid? LocationId, AntennaDirection Direction, double? PowerDbm);
+    public record AntennaWrite(int Port, Guid? LocationId, AntennaDirection Direction, double? PowerDbm, double? X = null, double? Y = null, double? RssiAt1m = null, double? PathLossExponent = null);
     public record DeviceWrite(string Name, DeviceKind Kind, string? SerialNumber, string? Model, Guid? SiteLocationId, Dictionary<string, object?>? Config, List<AntennaWrite>? Antennas);
 
     [HttpPost, Authorize(Policy = "Admin")]
     public async Task<IActionResult> Create(DeviceWrite w)
     {
         var d = new Device { TenantId = _ctx.TenantId, Name = w.Name, Kind = w.Kind, SerialNumber = w.SerialNumber, Model = w.Model, SiteLocationId = w.SiteLocationId, Config = w.Config ?? new() };
-        foreach (var a in w.Antennas ?? new()) d.Antennas.Add(new Antenna { TenantId = _ctx.TenantId, Port = a.Port, LocationId = a.LocationId, Direction = a.Direction, PowerDbm = a.PowerDbm });
+        foreach (var a in w.Antennas ?? new()) d.Antennas.Add(new Antenna { TenantId = _ctx.TenantId, Port = a.Port, LocationId = a.LocationId, Direction = a.Direction, PowerDbm = a.PowerDbm, X = a.X, Y = a.Y, RssiAt1m = a.RssiAt1m, PathLossExponent = a.PathLossExponent });
         _db.Devices.Add(d); await _db.SaveChangesAsync();
         return Ok(Map(d));
     }
@@ -230,7 +231,7 @@ public class DevicesController : ControllerBase
         if (w.Antennas != null)
         {
             _db.Antennas.RemoveRange(d.Antennas); d.Antennas.Clear();
-            foreach (var a in w.Antennas) _db.Antennas.Add(new Antenna { TenantId = _ctx.TenantId, DeviceId = d.Id, Port = a.Port, LocationId = a.LocationId, Direction = a.Direction, PowerDbm = a.PowerDbm });
+            foreach (var a in w.Antennas) _db.Antennas.Add(new Antenna { TenantId = _ctx.TenantId, DeviceId = d.Id, Port = a.Port, LocationId = a.LocationId, Direction = a.Direction, PowerDbm = a.PowerDbm, X = a.X, Y = a.Y, RssiAt1m = a.RssiAt1m, PathLossExponent = a.PathLossExponent });
         }
         await _db.SaveChangesAsync();
         return Ok(Map(await _db.Devices.Include(x => x.Antennas).ThenInclude(a => a.Location).FirstAsync(x => x.Id == id)));

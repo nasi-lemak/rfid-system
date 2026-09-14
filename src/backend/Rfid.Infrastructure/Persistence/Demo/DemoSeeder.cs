@@ -111,7 +111,7 @@ public class DemoSeeder
         foreach (var d in sc.Devices)
         {
             var dev = new Device { TenantId = tenant, Name = d.Name, Kind = d.Kind, Model = d.Model, SerialNumber = $"{sc.SiteCode}-{Slug(d.Name)}", SiteLocationId = site.Id, TokenHash = d.Token != null ? PasswordHasher.HashToken(d.Token) : null, LastSeenAt = now.AddMinutes(-Random(sc, d.Name) % 180) };
-            foreach (var a in d.Antennas) dev.Antennas.Add(new Antenna { TenantId = tenant, Port = a.Port, LocationId = (locs.GetValueOrDefault(a.Location) ?? throw new DomainException($"{sc.Template}: unknown antenna location '{a.Location}'")).Id, Direction = a.Direction, PowerDbm = 27 });
+            foreach (var a in d.Antennas) dev.Antennas.Add(new Antenna { TenantId = tenant, Port = a.Port, LocationId = (locs.GetValueOrDefault(a.Location) ?? throw new DomainException($"{sc.Template}: unknown antenna location '{a.Location}'")).Id, Direction = a.Direction, PowerDbm = 27, X = a.X, Y = a.Y, RssiAt1m = a.X.HasValue ? -45 : null, PathLossExponent = a.X.HasValue ? 2.2 : null });
             _db.Devices.Add(dev); devices[d.Name] = dev; result.Devices++;
         }
         await _db.SaveChangesAsync(ct);
@@ -145,7 +145,8 @@ public class DemoSeeder
         {
             var dev = devices.GetValueOrDefault(rd.Device) ?? throw new DomainException($"{sc.Template}: unknown device '{rd.Device}'");
             var at = now.AddHours(-rd.HoursAgo);
-            var batch = new ReadBatchRequest { DeviceId = dev.Id, SessionId = $"seed-{sc.SiteCode}", Reads = rd.Items.Select((id, i) => new ReadRequest { Epc = epcByItem[(items.GetValueOrDefault(id) ?? throw new DomainException($"{sc.Template}: unknown item '{id}' in reads")).Id], AntennaPort = rd.Port, Rssi = -48 - (Random(sc, id) % 20), ReadAt = at.AddSeconds(i) }).ToList() };
+            var ports = rd.PortRssi ?? new Dictionary<int, double> { [rd.Port] = double.NaN };
+            var batch = new ReadBatchRequest { DeviceId = dev.Id, SessionId = $"seed-{sc.SiteCode}", Reads = rd.Items.SelectMany((id, i) => ports.Select(pr => new ReadRequest { Epc = epcByItem[(items.GetValueOrDefault(id) ?? throw new DomainException($"{sc.Template}: unknown item '{id}' in reads")).Id], AntennaPort = pr.Key, Rssi = double.IsNaN(pr.Value) ? rd.Rssi ?? -48 - (Random(sc, id) % 20) : pr.Value, ReadAt = at.AddSeconds(i) })).ToList() };
             var r = await _ingest.IngestAsync(batch, ReadSource.Fixed, ct);
             result.Reads += r.Received; result.Alerts += r.Alerts;
         }

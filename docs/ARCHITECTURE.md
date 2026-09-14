@@ -137,8 +137,18 @@ same unit of work so alerts are transactional with the event.
 Background jobs run per tenant inside an ambient scope (`AmbientContext`), so the same tenant-filtered
 `DbContext` and services are used in requests and jobs alike.
 
+### v1.2 additions
+
+| Component | Role |
+|---|---|
+| `Llrp/LlrpCodec`, `Llrp/LlrpClient`, `LlrpReaderService` | LLRP 1.0.1 binary codec (messages, TLV/TV parameters), inventory client, per-device supervisor |
+| `Positioning/Trilateration`, `PositionService` | RSSI → distance, least-squares x/y, floor-plan queries; hooked into ingestion |
+| `Integrations/PayloadFormatters` | Generic / SAP / Dynamics 365 / Maximo payload shapes; `IOAuthTokenProvider` for OAuth2 |
+| `Labels/LabelDesign`, `LabelCompiler` | Declarative label document → ZPL template |
+| Mobile `reader/Printer.ts` | Network (server) or Bluetooth (native module) label printing |
+
 ## 7. Roadmap
-- Native LLRP client for readers without an HTTP/MQTT interface.
-- UWB / BLE trilateration for x/y positioning inside a zone (presence today is zone-level).
-- Vendor-specific ERP adapters (SAP, Dynamics, Maximo) layered on the integration endpoint.
-- Label designer UI and printing from the handheld.
+- Reader configuration over LLRP (transmit power, session, GPIO triggers) and GET_READER_CAPABILITIES.
+- Range-based (UWB) positioning input and Kalman smoothing of positions.
+- Inbound ERP sync (asset master → items) and reconciliation reports.
+- Print queues, reprint audit and label stock tracking.

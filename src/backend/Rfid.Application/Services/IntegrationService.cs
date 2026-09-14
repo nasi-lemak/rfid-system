@@ -3,6 +3,8 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Rfid.Application.Contracts;
+using Rfid.Application.Integrations;
+using Rfid.Domain;
 using Rfid.Domain.Entities;
 
 namespace Rfid.Application.Services;
@@ -17,12 +19,19 @@ public interface IIntegrationTransport
 /// Cursor-based outbound delivery of item events and alerts to ERP/EAM/BI endpoints. Each endpoint keeps its
 /// own cursor, so a slow or failing system never loses data; failures back off exponentially (max ~1 h).
 /// </summary>
+/// <summary>Fetches OAuth2 client-credentials tokens (HTTP in the API, fake in tests).</summary>
+public interface IOAuthTokenProvider { Task<string> GetTokenAsync(string tokenUrl, string clientId, string clientSecret, string? scope, CancellationToken ct); }
+
 public class IntegrationService
 {
     private readonly IAppDb _db;
     private readonly IIntegrationTransport _transport;
+    private readonly IOAuthTokenProvider? _oauth;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } };
-    public IntegrationService(IAppDb db, IIntegrationTransport transport) { _db = db; _transport = transport; }
+    /// <summary>Vendor formats keep their exact field names (SAP PascalCase, Maximo UPPERCASE); the generic envelope is camelCase.</summary>
+    private static readonly JsonSerializerOptions VendorJson = new() { PropertyNamingPolicy = null, DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull, Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } };
+    public static JsonSerializerOptions SerializerFor(IntegrationFormat f) => f == IntegrationFormat.Generic ? Json : VendorJson;
+    public IntegrationService(IAppDb db, IIntegrationTransport transport, IOAuthTokenProvider? oauth = null) { _db = db; _transport = transport; _oauth = oauth; }
 
     public async Task<int> DispatchAllAsync(DateTime now, CancellationToken ct = default)
     {
@@ -42,26 +51,32 @@ public class IntegrationService
         if (events.Count == 0 && alerts.Count == 0) return 0;
 
         var itemIds = events.Select(x => x.ItemId).Concat(alerts.Where(a => a.ItemId.HasValue).Select(a => a.ItemId!.Value)).Distinct().ToList();
-        var items = await _db.Items.Include(i => i.ItemType).Where(i => itemIds.Contains(i.Id)).ToDictionaryAsync(i => i.Id, ct);
-        var locs = await _db.Locations.ToDictionaryAsync(l => l.Id, l => new { l.Name, l.Code, Kind = l.Kind.ToString() }, ct);
-        var parties = await _db.Parties.ToDictionaryAsync(p => p.Id, p => new { p.Name, p.Code, Kind = p.Kind.ToString() }, ct);
-        var payload = new
-        {
-            endpoint = e.Name, sentAt = now, tenantId = e.TenantId,
-            events = events.Select(x => new
-            {
-                x.Id, x.Type, x.OccurredAt, item = Item(items.GetValueOrDefault(x.ItemId)),
-                fromLocation = x.FromLocationId.HasValue ? locs.GetValueOrDefault(x.FromLocationId.Value) : null, toLocation = x.ToLocationId.HasValue ? locs.GetValueOrDefault(x.ToLocationId.Value) : null,
-                fromParty = x.FromPartyId.HasValue ? parties.GetValueOrDefault(x.FromPartyId.Value) : null, toParty = x.ToPartyId.HasValue ? parties.GetValueOrDefault(x.ToPartyId.Value) : null,
-                x.FromState, x.ToState, x.OperationId, x.DeviceId, x.Data,
-            }),
-            alerts = alerts.Select(a => new { a.Id, a.Severity, a.Message, a.Status, a.RaisedAt, item = a.ItemId.HasValue ? Item(items.GetValueOrDefault(a.ItemId.Value)) : null, location = a.LocationId.HasValue ? locs.GetValueOrDefault(a.LocationId.Value) : null }),
-        };
-        var body = JsonSerializer.Serialize(payload, Json);
+        var items = await _db.Items.Include(i => i.ItemType).Include(i => i.CurrentLocation).Include(i => i.Tags).Where(i => itemIds.Contains(i.Id)).ToDictionaryAsync(i => i.Id, ct);
+        var locs = await _db.Locations.ToDictionaryAsync(l => l.Id, ct);
+        var parties = await _db.Parties.ToDictionaryAsync(p => p.Id, ct);
+        var payload = PayloadFormatters.For(e.Format).Build(new DeliveryBatch(e, now, events, alerts, items, locs, parties));
+        var body = JsonSerializer.Serialize(payload, SerializerFor(e.Format));
         var headers = e.Headers.Where(h => h.Value != null).ToDictionary(h => h.Key, h => h.Value!.ToString()!);
         headers["X-Rfid-Endpoint"] = e.Name;
         headers["X-Rfid-Timestamp"] = now.ToString("O");
         if (!string.IsNullOrEmpty(e.Secret)) headers["X-Rfid-Signature"] = Sign(e.Secret, body);
+        try
+        {
+            switch (e.AuthType)
+            {
+                case IntegrationAuth.Bearer when !string.IsNullOrEmpty(e.ApiToken): headers["Authorization"] = "Bearer " + e.ApiToken; break;
+                case IntegrationAuth.Basic: headers["Authorization"] = "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes($"{e.Username}:{e.Password}")); break;
+                case IntegrationAuth.OAuth2ClientCredentials:
+                    if (_oauth == null || string.IsNullOrEmpty(e.TokenUrl)) throw new InvalidOperationException("OAuth2 token endpoint not configured");
+                    headers["Authorization"] = "Bearer " + await _oauth.GetTokenAsync(e.TokenUrl, e.ClientId ?? "", e.ClientSecret ?? "", e.Scope, ct);
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            e.FailureCount++; e.LastError = "auth: " + ex.Message; e.NextAttemptAt = now.AddSeconds(Math.Min(3600, 10 * Math.Pow(2, Math.Min(e.FailureCount, 9))));
+            await _db.SaveChangesAsync(ct); return 0;
+        }
 
         var (ok, error) = await _transport.PostAsync(e.Url, body, headers, ct);
         if (ok)
@@ -79,7 +94,6 @@ public class IntegrationService
         return ok ? events.Count + alerts.Count : 0;
     }
 
-    private static object? Item(Item? i) => i == null ? null : new { i.Id, i.Identifier, i.Name, type = i.ItemType?.Code, i.State, i.Status, i.Quantity, i.LotNumber, i.Attributes, epc = i.Tags.FirstOrDefault()?.Epc };
 
     public static string Sign(string secret, string body)
     {

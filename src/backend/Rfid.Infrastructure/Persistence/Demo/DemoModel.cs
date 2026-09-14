@@ -27,7 +27,8 @@ public record PartyDef(string Name, PartyKind Kind, string? Code = null);
 public record ItemDef(string Type, string Identifier, string Name, string? Location = null, string? State = null, string? Custodian = null, string? Parent = null,
     decimal Qty = 1, string? Lot = null, int? ExpiryDays = null, int Cycles = 0, Dictionary<string, object?>? Attrs = null,
     int? LastInspectedDaysAgo = null, int? DueBackInDays = null, int LastSeenHoursAgo = 6, decimal? Cost = null);
-public record AntennaDef(int Port, string Location, AntennaDirection Direction = AntennaDirection.None);
+public record AntennaDef(int Port, string Location, AntennaDirection Direction = AntennaDirection.None, double? X = null, double? Y = null);
 public record DeviceDef(string Name, DeviceKind Kind, string Model, AntennaDef[] Antennas, string? Token = null);
 public record StepDef(OperationType Type, string[] Items, double DaysAgo, string? To = null, string? Party = null, string? State = null, string? Container = null, decimal? Qty = null, string? Reference = null, int? DueBackDays = null);
-public record ReadDef(string Device, int Port, string[] Items, double HoursAgo);
+/// <param name="PortRssi">When set, one read per port with that RSSI is emitted in the same batch (multi-anchor sighting for trilateration).</param>
+public record ReadDef(string Device, int Port, string[] Items, double HoursAgo, double? Rssi = null, Dictionary<int, double>? PortRssi = null);

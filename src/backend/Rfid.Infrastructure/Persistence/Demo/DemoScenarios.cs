@@ -17,6 +17,7 @@ public static class DemoScenarios
     private static ItemDef I(string type, string id, string name, string? loc = null, string? state = null, string? custodian = null, string? parent = null, decimal qty = 1, string? lot = null, int? expiryDays = null, int cycles = 0, Dictionary<string, object?>? attrs = null, int? inspectedDaysAgo = null, int? dueBackDays = null, int seenHoursAgo = 6, decimal? cost = null)
         => new(type, id, name, loc, state, custodian, parent, qty, lot, expiryDays, cycles, attrs, inspectedDaysAgo, dueBackDays, seenHoursAgo, cost);
     private static AntennaDef Ant(int port, string loc, AntennaDirection dir = AntennaDirection.None) => new(port, loc, dir);
+    private static AntennaDef Anchor(int port, string loc, double x, double y) => new(port, loc, AntennaDirection.None, x, y);
     private static DeviceDef D(string name, DeviceKind kind, string model, string? token = null, params AntennaDef[] antennas) => new(name, kind, model, antennas, token);
     private static StepDef S(OperationType type, double daysAgo, string[] items, string? to = null, string? party = null, string? state = null, string? container = null, decimal? qty = null, string? reference = null, int? dueBackDays = null)
         => new(type, items, daysAgo, to, party, state, container, qty, reference, dueBackDays);
@@ -450,7 +451,7 @@ public static class DemoScenarios
         new Scenario
         {
             Template = "people-presence", Site = "Riverside Campus & Riverside 10K", SiteCode = "CAMPUS", CompanyPrefix = "0614153",
-            Locations = { L("Reception", LocationKind.Zone, null, Attr(("presenceTimeoutSec", 43200))), L("Turnstile", LocationKind.Gate, null, Attr(("presenceTimeoutSec", 43200))), L("Office Zone", LocationKind.Zone, null, Attr(("presenceTimeoutSec", 43200))), L("Lab Zone", LocationKind.Zone, null, Attr(("restricted", true), ("presenceTimeoutSec", 43200))), L("Muster Point A", LocationKind.MusterPoint, null, Attr(("presenceTimeoutSec", 43200))), L("Riverside 10K", LocationKind.Area), L("Race Start", LocationKind.Checkpoint, "Riverside 10K", Attr(("order", 1))), L("5 km Split", LocationKind.Checkpoint, "Riverside 10K", Attr(("order", 2))), L("Finish", LocationKind.Checkpoint, "Riverside 10K", Attr(("order", 3))), L("Off site", LocationKind.External) },
+            Locations = { L("Reception", LocationKind.Zone, null, Attr(("presenceTimeoutSec", 43200))), L("Turnstile", LocationKind.Gate, null, Attr(("presenceTimeoutSec", 43200))), L("Office Zone", LocationKind.Zone, null, Attr(("presenceTimeoutSec", 43200), ("widthM", 24), ("heightM", 12))), L("Lab Zone", LocationKind.Zone, null, Attr(("restricted", true), ("presenceTimeoutSec", 43200))), L("Muster Point A", LocationKind.MusterPoint, null, Attr(("presenceTimeoutSec", 43200))), L("Riverside 10K", LocationKind.Area), L("Race Start", LocationKind.Checkpoint, "Riverside 10K", Attr(("order", 1))), L("5 km Split", LocationKind.Checkpoint, "Riverside 10K", Attr(("order", 2))), L("Finish", LocationKind.Checkpoint, "Riverside 10K", Attr(("order", 3))), L("Off site", LocationKind.External) },
             Parties = { P("Security", PartyKind.Department), P("Olivia Grant", PartyKind.Employee, "E-201"), P("Ben Carter", PartyKind.Employee, "E-202"), P("Visitor: Ana Silva", PartyKind.Person) },
             Items =
             {
@@ -467,12 +468,15 @@ public static class DemoScenarios
                 D("Turnstile Reader", DeviceKind.Gate, "Nedap uPASS", null, Ant(1, "Turnstile", In), Ant(2, "Turnstile", Out)),
                 D("Lab Zone Reader", DeviceKind.Portal, "Impinj R700", null, Ant(1, "Lab Zone", In), Ant(2, "Lab Zone", Out)),
                 D("Muster Point A Reader", DeviceKind.Fixed, "Zebra FX9600", null, Ant(1, "Muster Point A")),
+                D("Office BLE Gateways", DeviceKind.Fixed, "Kontakt.io Portal Beam ×4", null, Anchor(1, "Office Zone", 0, 0), Anchor(2, "Office Zone", 24, 0), Anchor(3, "Office Zone", 0, 12), Anchor(4, "Office Zone", 24, 12)),
                 D("Start Mat", DeviceKind.Fixed, "Timing mat", null, Ant(1, "Race Start")), D("5 km Mat", DeviceKind.Fixed, "Timing mat", null, Ant(1, "5 km Split")), D("Finish Mat", DeviceKind.Fixed, "Timing mat", null, Ant(1, "Finish")),
             },
             History = { S(OperationType.Issue, 0.2, Ids("VIS-0002"), party: "Visitor: Ana Silva", to: "Office Zone", dueBackDays: 1, reference: "Host: Olivia Grant"), S(OperationType.Count, 1, Ids("BDG-0201", "BDG-0202"), to: "Muster Point A", reference: "Fire drill") },
             Reads =
             {
                 R("Turnstile Reader", 1, 9, "BDG-0201", "BDG-0202"), R("Turnstile Reader", 1, 7.5, "VIS-0002"), R("Lab Zone Reader", 1, 6, "BDG-0202"), R("Lab Zone Reader", 1, 0.5, "VIS-0002"),
+                new ReadDef("Office BLE Gateways", 1, Ids("BDG-0201"), 0.3, null, new() { [1] = -63.9, [2] = -72.8, [3] = -67.0, [4] = -73.5 }),
+                new ReadDef("Office BLE Gateways", 1, Ids("VIS-0002"), 0.2, null, new() { [1] = -73.9, [2] = -62.6, [3] = -74.3, [4] = -66.0 }),
                 R("Start Mat", 1, 3.0, "BIB-0101", "BIB-0102", "BIB-0103"), R("5 km Mat", 1, 2.72, "BIB-0101"), R("5 km Mat", 1, 2.70, "BIB-0102"), R("5 km Mat", 1, 2.66, "BIB-0103"), R("Finish Mat", 1, 2.42, "BIB-0101"), R("Finish Mat", 1, 2.39, "BIB-0102"), R("Finish Mat", 1, 2.33, "BIB-0103"),
             },
         },

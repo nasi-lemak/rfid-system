@@ -12,11 +12,12 @@ export default function SettingsScreen() {
   const { settings, update } = useSettings();
   const { reader, status, error, reconnect } = useReader();
   const [locations, setLocations] = useState<LocationRow[]>([]);
+  const [printers, setPrinters] = useState<{ id: string; name: string }[]>([]);
   const [filter, setFilter] = useState('');
   const [queue, setQueue] = useState(0);
   const [msg, setMsg] = useState<string | null>(null);
   const [power, setPower] = useState(String(settings.power));
-  useEffect(() => { Api.locations().then(setLocations).catch(() => {}); readQueue().then((q) => setQueue(q.length)); }, []);
+  useEffect(() => { Api.locations().then(setLocations).catch(() => {}); readQueue().then((q) => setQueue(q.length)); Api.devices().then((d) => setPrinters(d.filter((x) => x.kind === 'Printer').map((x) => ({ id: x.id, name: x.name })))).catch(() => {}); }, []);
 
   const seedSimulator = async () => {
     if (!(reader instanceof SimulatedReader)) return;
@@ -41,6 +42,11 @@ export default function SettingsScreen() {
         <FlatList scrollEnabled={false} data={locations.filter((l) => !filter || l.name.toLowerCase().includes(filter.toLowerCase())).slice(0, 25)} keyExtractor={(l) => l.id} renderItem={({ item: l }) => (
           <Pressable onPress={() => update({ currentLocationId: l.id, currentLocationName: l.name })} style={[s.row, { paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.border }]}><Badge>{l.kind}</Badge><Text style={s.text}>{'  '.repeat(Math.max(0, l.path.split('/').length - 3))}{l.name}</Text></Pressable>
         )} />
+      </View>
+      <View style={s.panel}>
+        <Text style={s.h2}>Label printer</Text>
+        <Text style={s.muted}>Network printers are driven by the server; "Bluetooth" uses a paired mobile printer via the BtPrinter native module.</Text>
+        <Chips options={[{ value: 'none', label: 'None' }, ...printers.map((p) => ({ value: p.id, label: p.name })), { value: 'bluetooth', label: 'Bluetooth (mobile)' }]} value={settings.printerDeviceId ?? 'none'} onChange={(v) => update({ printerDeviceId: v === 'none' ? null : v, printerDeviceName: v === 'bluetooth' ? 'Bluetooth printer' : printers.find((p) => p.id === v)?.name ?? null })} />
       </View>
       <View style={s.panel}>
         <Text style={s.h2}>Offline queue</Text>

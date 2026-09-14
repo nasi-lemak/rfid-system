@@ -16,6 +16,7 @@ export async function api<T = unknown>(path: string, init: { method?: string; js
     const res = await fetch(url, { method: init.method ?? (init.json !== undefined ? 'POST' : 'GET'), headers, body: init.json !== undefined ? JSON.stringify(init.json) : undefined, signal: controller.signal });
     if (!res.ok) { let msg = `${res.status} ${res.statusText}`; try { const j = await res.json(); msg = j.error ?? msg; } catch { /* ignore */ } throw new ApiError(res.status, msg); }
     const text = await res.text();
+    if (!res.headers.get('content-type')?.includes('json')) return text as unknown as T;
     return (text ? JSON.parse(text) : undefined) as T;
   } finally { clearTimeout(timer); }
 }
@@ -48,4 +49,7 @@ export const Api = {
   createStocktake: (name: string, locationId: string) => post<StocktakeSummary>('/api/stocktakes', { name, locationId }),
   stocktakeScans: (id: string, epcs: string[], locationId?: string) => post<StocktakeSummary>(`/api/stocktakes/${id}/scans`, { epcs, locationId }),
   stocktakeReconcile: (id: string) => post<StocktakeSummary>(`/api/stocktakes/${id}/reconcile`),
+  devices: () => get<{ id: string; name: string; kind: string; config: Record<string, unknown> }[]>('/api/devices'),
+  printLabel: (itemIds: string[], printerDeviceId: string) => post<{ itemId: string; ok: boolean; error?: string; epc?: string }[]>('/api/labels/print', { itemIds, printerDeviceId }),
+  labelZpl: (itemId: string) => api<string>(`/api/labels/items/${itemId}`),
 };

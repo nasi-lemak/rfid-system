@@ -60,4 +60,16 @@ public class IntegrationEndpoint : TenantEntity
     public int FailureCount { get; set; }
     public DateTime? NextAttemptAt { get; set; }
     public long DeliveredCount { get; set; }
+    /// <summary>Payload shape: generic envelope or a vendor-specific mapping (SAP asset master, Dynamics 365 customer asset, IBM Maximo MXASSET).</summary>
+    public IntegrationFormat Format { get; set; } = IntegrationFormat.Generic;
+    public IntegrationAuth AuthType { get; set; } = IntegrationAuth.None;
+    public string? ApiToken { get; set; }
+    public string? Username { get; set; }
+    public string? Password { get; set; }
+    public string? TokenUrl { get; set; }
+    public string? ClientId { get; set; }
+    public string? ClientSecret { get; set; }
+    public string? Scope { get; set; }
+    /// <summary>Vendor mapping hints, e.g. {"companyCode":"1000","costCenterAttribute":"costCentre","siteId":"BEDFORD"}.</summary>
+    public Dictionary<string, object?> Mapping { get; set; } = new();
 }

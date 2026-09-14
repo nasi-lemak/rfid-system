@@ -12,9 +12,11 @@ export interface Settings {
   currentLocationName: string | null;
   power: number;
   beep: boolean;
+  printerDeviceId: string | null;
+  printerDeviceName: string | null;
 }
 
-export const defaultSettings: Settings = { serverUrl: 'http://10.0.2.2:5080', token: null, userName: null, deviceId: null, readerKind: 'simulated', currentLocationId: null, currentLocationName: null, power: 30, beep: true };
+export const defaultSettings: Settings = { serverUrl: 'http://10.0.2.2:5080', token: null, userName: null, deviceId: null, readerKind: 'simulated', currentLocationId: null, currentLocationName: null, power: 30, beep: true, printerDeviceId: null, printerDeviceName: null };
 const KEY = 'rfid.settings';
 let cache: Settings | null = null;
 

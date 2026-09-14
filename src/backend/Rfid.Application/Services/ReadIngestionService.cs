@@ -17,13 +17,14 @@ public class ReadIngestionService
     private readonly RuleEngine _rules;
     private readonly ILivePublisher _live;
     private readonly PresenceService? _presence;
+    private readonly PositionService? _position;
 
     /// <summary>Repeated reads of the same item at the same location inside this window do not produce events.</summary>
     public TimeSpan Debounce { get; set; } = TimeSpan.FromSeconds(30);
 
-    public ReadIngestionService(IAppDb db, ICurrentContext ctx, TagResolver tags, RuleEngine rules, ILivePublisher live, PresenceService? presence = null)
+    public ReadIngestionService(IAppDb db, ICurrentContext ctx, TagResolver tags, RuleEngine rules, ILivePublisher live, PresenceService? presence = null, PositionService? position = null)
     {
-        _db = db; _ctx = ctx; _tags = tags; _rules = rules; _live = live; _presence = presence;
+        _db = db; _ctx = ctx; _tags = tags; _rules = rules; _live = live; _presence = presence; _position = position;
     }
 
     public async Task<IngestResult> IngestAsync(ReadBatchRequest batch, ReadSource source, CancellationToken ct = default)
@@ -40,6 +41,7 @@ public class ReadIngestionService
         var explicitLocs = explicitLocIds.Count == 0 ? new() : await _db.Locations.Where(l => explicitLocIds.Contains(l.Id)).ToDictionaryAsync(l => l.Id, ct);
         var live = new List<LiveRead>();
         var seenThisBatch = new HashSet<(Guid, Guid?)>();
+        var sightings = new Dictionary<Guid, (Item item, List<(Antenna antenna, double rssi)> list, DateTime at)>();
 
         // Keep the latest read per EPC+antenna to avoid hammering the DB with duplicates from a single batch,
         // and process the strongest read of each EPC first so that, when several antennas/zones see the same
@@ -64,6 +66,11 @@ public class ReadIngestionService
 
             if (item == null) { result.Unknown++; continue; }
             result.Resolved++;
+            if (antenna?.X != null && r.Rssi.HasValue)
+            {
+                if (!sightings.TryGetValue(item.Id, out var sg)) sightings[item.Id] = sg = (item, new(), at);
+                sg.list.Add((antenna, r.Rssi.Value));
+            }
             if (seenThisBatch.Any(x => x.Item1 == item.Id)) continue; // a stronger antenna already placed this item
             seenThisBatch.Add((item.Id, location?.Id));
             if (location != null && _presence != null && direction != AntennaDirection.Out) await _presence.TrackAsync(item, location, device?.Id, r.Rssi, at, ct);
@@ -111,6 +118,7 @@ public class ReadIngestionService
             result.Alerts += alerts.Count;
         }
 
+        if (_position != null) foreach (var sg in sightings.Values) _position.Update(sg.item, sg.list, sg.at);
         await _db.SaveChangesAsync(ct);
         await _live.PublishReadsAsync(live, ct);
         return result;

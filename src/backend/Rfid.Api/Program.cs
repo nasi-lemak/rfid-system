@@ -52,6 +52,9 @@ builder.Services.AddHostedService<Rfid.Api.Background.PresenceSweeperService>();
 builder.Services.AddHostedService<Rfid.Api.Background.StocktakeSchedulerService>();
 builder.Services.AddHostedService<Rfid.Api.Background.IntegrationDispatcherService>();
 builder.Services.AddHostedService<Rfid.Api.Background.MqttIngestService>();
+builder.Services.AddHostedService<Rfid.Api.Background.LlrpReaderService>();
+builder.Services.AddScoped<PositionService>();
+builder.Services.AddHttpClient<IOAuthTokenProvider, Rfid.Api.Background.HttpOAuthTokenProvider>();
 builder.Services.AddScoped<Rfid.Infrastructure.Persistence.Demo.DemoSeeder>();
 builder.Services.AddSingleton<JwtService>();
 

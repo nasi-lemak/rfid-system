@@ -6,6 +6,7 @@ import type { RootStackParamList } from '../../App';
 import { Api, type ItemSummary } from '../api/client';
 import { useReader } from '../reader';
 import { Badge, Button, Field, Loading, s, C } from '../ui';
+import { printLabel } from '../reader/Printer';
 
 /** Identify a single tag: nearest tag wins while scanning. Shows the item, its history and quick actions. */
 export default function LookupScreen() {
@@ -18,6 +19,8 @@ export default function LookupScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [printMsg, setPrintMsg] = useState<string | null>(null);
+  const doPrint = async () => { try { setPrintMsg(await printLabel(item!.id)); } catch (e) { setPrintMsg((e as Error).message); } };
 
   useEffect(() => {
     if (!scanning) return;
@@ -59,7 +62,9 @@ export default function LookupScreen() {
           <View style={[s.row, { marginBottom: 12 }]}>
             {['Transfer', 'Issue', 'Return', 'Count', 'ProcessStage', 'Inspect'].map((op) => <Button key={op} small title={op} onPress={() => nav.navigate('Operation', { epcs: [epc], type: op })} />)}
             <Button small title="Locate" tone="primary" onPress={() => nav.navigate('Locate', { epc, name: item.name })} />
+            <Button small title="🖨 Print label" onPress={doPrint} />
           </View>
+          {printMsg && <Text style={[s.muted, { marginBottom: 8 }]}>{printMsg}</Text>}
           <View style={s.panel}>
             <Text style={s.h2}>History</Text>
             {events.map((e) => <Text key={e.id} style={s.muted}>{new Date(e.occurredAt).toLocaleString()} · {e.type}{e.toState ? ` → ${e.toState}` : ''}{e.data?.direction ? ` (${String(e.data.direction)})` : ''}</Text>)}

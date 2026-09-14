@@ -13,11 +13,29 @@ for a JWT at `POST /api/auth/device {"token": "..."}`. Handhelds may also use a 
 | Zebra FX7500 / FX9600 (IoT Connector) | HTTP POST endpoint → `POST /api/ingest/zebra?deviceId=<id>` (`data.idHex`, `antenna`, `peakRssi`, `TID`) |
 | Anything else that can POST JSON | `POST /api/ingest/generic` — `{reads:[…]}`, `[…]`, a single read object, or an array of EPC strings; fields `epc/epcHex/idHex/tag/id`, `rssi/peakRssi`, `antennaPort/antenna/port`, `readAt/timestamp/time` |
 | **MQTT** | Set `Mqtt:Enabled=true`, `Mqtt:Host`, `Mqtt:Topics` in `appsettings.json` (or env `Mqtt__Enabled` …). Give each device a `Config.mqttTopic` (exact topic or `+`/`#` wildcard pattern) and optionally `Config.vendor` (`impinj`/`zebra`). Payloads on matching topics go through the same adapters. |
-| LLRP-only readers | Use the vendor's LLRP-to-MQTT/HTTP bridge (Impinj IoT Interface, Zebra IoT Connector, Keonn, Nordic ID) or a small edge agent that posts to `/api/ingest/generic`; a native LLRP client is not included. |
+| **LLRP** (native client) | Set `Config.llrpHost` (and optional `llrpPort`, default 5084) on a Fixed/Portal/Gate device. The API's `LlrpReaderService` connects to the reader, resets its configuration, adds/enables/starts a continuous Gen2 inventory ROSpec on all antennas and streams `RO_ACCESS_REPORT`s (EPC-96 / EPCData, antenna, peak RSSI, timestamps, seen count) into ingestion; keepalives are acknowledged and connections re-established automatically. Works with Impinj Speedway/R700 (LLRP mode), Zebra FX-series, Alien and other LLRP 1.0.1 readers. Set `llrpEnabled: false` to pause. |
 
 Antenna → location mapping (with `In` / `Out` direction for portals) turns raw reads into zone
 movements and rule evaluation. When several antennas or gateways see one tag in the same batch, the
 **strongest RSSI** decides the zone ("nearest reader" resolution for BLE / active tags).
+
+## Positioning (x/y trilateration)
+
+Give antennas anchor coordinates (`X`, `Y` in metres; Readers & devices) and the zone a size
+(location attributes `widthM`, `heightM`). When one tag is seen by several positioned antennas in a
+batch, ingestion converts RSSI to distance with the log-distance model (`RssiAt1m`, default −45 dBm;
+`PathLossExponent`, default 2.2 — both per antenna) and solves the position by non-linear least
+squares (Gauss-Newton from a weighted centroid; 2 anchors → along the line, 1 → at the anchor). The
+estimate and an accuracy figure (fit residual) are stored on the item (`PositionX/Y/At/AccuracyM`).
+
+- `GET /api/positions/floor-plans` — zones that have anchors
+- `GET /api/positions/floor-plans/{locationId}?maxAgeMinutes=720` — anchors + recent item positions
+- Web: Presence & location → **Floor plan (x/y)**
+
+Typical sources: BLE gateways (Kontakt.io, Minew, Aruba), UWB anchors reporting RSSI/range, or
+multi-antenna UHF readers with directional antennas. For UWB systems that report ranges directly,
+post the range as `rssi` with `RssiAt1m = 0`, `PathLossExponent = 1` → distance = 10^(−rssi/10)… or
+simply post the range in dB form; a dedicated range field is a small extension of `ReadRequest`.
 
 ## Presence engine
 
@@ -56,6 +74,25 @@ cursor can be rewound to replay history.
 
 Rules can also call a webhook directly (action `Webhook`) for single, immediate notifications.
 
+### Vendor formats & authentication
+
+`Format` selects the payload shape and `AuthType` the credential handling (both editable in the UI):
+
+| Format | Shape | Mapping keys |
+|---|---|---|
+| `Generic` | The envelope above (camelCase) | – |
+| `SapAssetManagement` | `MessageHeader`, `AssetMaster[]` (CompanyCode, AssetNumber, AssetDescription, AssetClass, CostCenter, Location, AcquisitionValue, CapitalizationDate, InventoryNumber = EPC…), `AssetTransfer[]` (custody changes), `AssetMovement[]`, `AssetRetirement[]`, `Notifications[]` (alerts → M1/M2) | `companyCode`, `plant`, `costCenterAttribute` |
+| `Dynamics365` | `value[]` of `msdyn_customerasset` records (serial number = identifier, EPC, location, state, custodian) + `transactions[]` + `alerts[]` | `accountId`, `siteId` |
+| `Maximo` | `MXASSET.ASSET[]` (ASSETNUM, DESCRIPTION, SITEID, ORGID, LOCATION, STATUS, SERIALNUM, RFIDTAG, PURCHASEPRICE, ASSETTRANS[]) + `MXSR.SR[]` for alerts | `siteId`, `orgId` |
+
+Vendor formats keep the vendor's exact field names. They are starting points: point the endpoint at
+your middleware (SAP CPI/PI, Power Automate/Dataverse Web API, Maximo MIF/OSLC) and adjust the
+mapping there or extend the formatter.
+
+Auth: `None` (signature only), `Bearer` (`ApiToken`), `Basic` (`Username`/`Password`), or
+`OAuth2ClientCredentials` (`TokenUrl`, `ClientId`, `ClientSecret`, `Scope`; tokens are cached until
+expiry). Authentication failures back off like delivery failures.
+
 ## Pull-style exports & reports
 
 `GET /api/reports` lists the catalog; `GET /api/reports/{code}?format=csv|json&days=…&from=…&to=…`.
@@ -79,6 +116,21 @@ pressing a button.
   (`Config.host`, `Config.port` default 9100) — Zebra ZT411R / ZD621R and compatible RFID printers.
 - `POST /api/tags/encode {scheme: "SGTIN-96"|"GRAI-96"|"GIAI-96", companyPrefix, reference?, serial, filter?}`
   and `GET /api/tags/decode-any/{epc}`.
+
+### Label designer
+
+**Label designer** (web) edits a declarative design — label size, printer density, RFID encode flag
+and elements (text, Code-128 barcode, QR, box, line) positioned in millimetres with placeholders — and
+compiles it to the item type's ZPL template (`PUT /api/labels/designs/item-types/{id}`,
+`POST /api/labels/designs/compile` for previews). Items of that type print with the design from the
+web (item page) or the handheld.
+
+### Printing from the handheld
+
+Settings → **Label printer**: pick a network `Printer` device (the server renders and sends ZPL) or
+*Bluetooth (mobile)* for a paired mobile printer (ZQ630R/ZQ520-class) through the `BtPrinter` native
+module (`print(zpl)`); the app fetches the ZPL from `GET /api/labels/items/{id}`. Print buttons live on
+the Lookup screen and after a successful Commission.
 
 ## Template customisation
 

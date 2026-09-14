@@ -8,7 +8,7 @@ export interface Lifecycle { initial?: string | null; states: string[]; transiti
 export interface ItemType {
   id: Guid; name: string; code: string; category: 'Serialized' | 'Quantity'; isContainer: boolean; tracksExpiry: boolean; tracksCycles: boolean;
   maxCycles?: number | null; requiresInspection: boolean; inspectionIntervalDays?: number | null; reorderPoint?: number | null; unit?: string | null;
-  attributeSchema: AttributeDefinition[]; lifecycle?: Lifecycle | null; vertical?: string | null; itemCount?: number;
+  attributeSchema: AttributeDefinition[]; lifecycle?: Lifecycle | null; vertical?: string | null; itemCount?: number; usefulLifeMonths?: number | null; hasLabelDesign?: boolean;
 }
 
 export interface Tag { id: Guid; epc: string; tid?: string | null; technology: string; status: string; itemId?: Guid | null; itemName?: string | null; encodedAt?: string | null }
@@ -26,8 +26,8 @@ export interface Item {
 
 export interface Location { id: Guid; parentId?: Guid | null; kind: string; name: string; code?: string | null; path: string; latitude?: number | null; longitude?: number | null; isMobile: boolean; attributes: Record<string, unknown>; itemCount?: number }
 export interface Party { id: Guid; kind: string; name: string; code?: string | null; externalRef?: string | null; email?: string | null; attributes: Record<string, unknown>; itemsInCustody?: number }
-export interface Antenna { id?: Guid; port: number; locationId?: Guid | null; locationName?: string | null; direction: 'None' | 'In' | 'Out'; powerDbm?: number | null }
-export interface Device { id: Guid; name: string; kind: string; serialNumber?: string | null; model?: string | null; siteLocationId?: Guid | null; lastSeenAt?: string | null; config: Record<string, unknown>; hasToken: boolean; antennas: Antenna[] }
+export interface Antenna { id?: Guid; port: number; locationId?: Guid | null; locationName?: string | null; direction: 'None' | 'In' | 'Out'; powerDbm?: number | null; x?: number | null; y?: number | null; rssiAt1m?: number | null; pathLossExponent?: number | null }
+export interface Device { id: Guid; name: string; kind: string; serialNumber?: string | null; model?: string | null; siteLocationId?: Guid | null; lastSeenAt?: string | null; config: Record<string, unknown>; hasToken: boolean; antennas: Antenna[]; llrp?: { host: string; port: number } | null }
 
 export interface ItemEvent { id: Guid; itemId: Guid; itemName?: string; itemIdentifier?: string; type: string; fromLocationId?: Guid | null; toLocationId?: Guid | null; fromPartyId?: Guid | null; toPartyId?: Guid | null; fromState?: string | null; toState?: string | null; operationId?: Guid | null; deviceId?: Guid | null; userId?: Guid | null; occurredAt: string; data: Record<string, unknown> }
 export interface Alert { id: Guid; ruleId?: Guid | null; itemId?: Guid | null; itemName?: string; itemIdentifier?: string; locationId?: Guid | null; severity: 'Info' | 'Warning' | 'Critical'; message: string; status: 'Open' | 'Acknowledged' | 'Closed'; raisedAt: string }
@@ -60,5 +60,10 @@ export interface MusterReport { onSite: number; accounted: number; unaccounted: 
 export interface TimingRow { itemId: Guid; bib: string; athlete?: string | null; category?: string | null; checkpoints: Record<string, string | null>; elapsedSeconds?: number | null; rank: number }
 export interface ReportDef { code: string; name: string; description: string }
 export interface ReportResult { columns: string[]; rows: unknown[][]; count: number }
-export interface IntegrationEndpoint { id: Guid; name: string; url: string; hasSecret: boolean; enabled: boolean; eventTypes: string[]; includeAlerts: boolean; headers: Record<string, unknown>; batchSize: number; eventCursor: string; alertCursor: string; lastDeliveryAt?: string | null; lastError?: string | null; failureCount: number; nextAttemptAt?: string | null; deliveredCount: number }
+export interface IntegrationEndpoint { id: Guid; name: string; url: string; hasSecret: boolean; format?: string; authType?: string; username?: string | null; tokenUrl?: string | null; clientId?: string | null; scope?: string | null; mapping?: Record<string, unknown>; hasCredentials?: boolean; enabled: boolean; eventTypes: string[]; includeAlerts: boolean; headers: Record<string, unknown>; batchSize: number; eventCursor: string; alertCursor: string; lastDeliveryAt?: string | null; lastError?: string | null; failureCount: number; nextAttemptAt?: string | null; deliveredCount: number }
 export interface StocktakeSchedule { id: Guid; name: string; locationId: Guid; location?: string; itemTypeId?: Guid | null; intervalDays: number; timeOfDay: string; nextRunAt: string; lastRunAt?: string | null; lastStocktakeId?: Guid | null; enabled: boolean; autoReconcileHours?: number | null }
+
+export interface FloorPlanSummary { id: Guid; name: string; kind: string; bounds?: { w: number; h: number } | null }
+export interface FloorPlan { locationId: Guid; location: string; widthM?: number | null; heightM?: number | null; anchors: { antennaId: Guid; device: string; port: number; x: number; y: number }[]; items: { itemId: Guid; name: string; identifier: string; itemType?: string | null; x: number; y: number; accuracyM?: number | null; at?: string | null; person?: string | null }[] }
+export interface LabelElement { type: 'text' | 'barcode' | 'qr' | 'box' | 'line'; x: number; y: number; width?: number | null; height?: number | null; text?: string | null; fontSizeMm: number; bold: boolean; rotation: number; moduleWidth: number; magnification: number; thickness: number }
+export interface LabelDesign { widthMm: number; heightMm: number; dpmm: number; encodeRfid: boolean; elements: LabelElement[] }

@@ -22,6 +22,12 @@ public class Antenna : TenantEntity
     public Location? Location { get; set; }
     public AntennaDirection Direction { get; set; } = AntennaDirection.None;
     public double? PowerDbm { get; set; }
+    /// <summary>Anchor coordinates (metres) inside the zone, for RSSI trilateration of BLE/UWB/active tags.</summary>
+    public double? X { get; set; }
+    public double? Y { get; set; }
+    /// <summary>Path-loss model: RSSI measured at 1 m (default -45 dBm) and exponent (default 2.2).</summary>
+    public double? RssiAt1m { get; set; }
+    public double? PathLossExponent { get; set; }
 }
 
 public class TagRead : TenantEntity

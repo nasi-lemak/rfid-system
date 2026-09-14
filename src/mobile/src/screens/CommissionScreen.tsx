@@ -7,6 +7,7 @@ import { useReader } from '../reader';
 import { useSettings } from '../store/settings';
 import { runOrQueue } from '../store/queue';
 import { Button, C, Chips, Field, s } from '../ui';
+import { printLabel } from '../reader/Printer';
 
 /**
  * Tag commissioning: read the tag in hand (or encode a new EPC into it), pick an item type,
@@ -26,6 +27,7 @@ export default function CommissionScreen() {
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [reading, setReading] = useState(false);
+  const [lastItemId, setLastItemId] = useState<string | null>(null);
   useEffect(() => { Api.itemTypes().then(setTypes).catch((e) => setMsg((e as Error).message)); }, []);
   const type = types.find((t) => t.id === typeId);
 
@@ -47,7 +49,7 @@ export default function CommissionScreen() {
     setBusy(true); setMsg(null);
     try {
       const r = await runOrQueue({ type: 'Commission', toLocationId: settings.currentLocationId ?? undefined, lines: [{ epc, newItem: { itemTypeId: type.id, identifier: identifier || epc, name: name || identifier || epc, attributes: attrs } }] });
-      if (r.online) { const l = r.result.lines[0]; setMsg(l.result === 'Ok' ? `✓ Commissioned ${l.itemName}` : `${l.result}: ${l.message}`); if (l.result === 'Ok') { setEpc(''); setIdentifier(''); setName(''); setAttrs({}); } }
+      if (r.online) { const l = r.result.lines[0]; setMsg(l.result === 'Ok' ? `✓ Commissioned ${l.itemName}` : `${l.result}: ${l.message}`); if (l.result === 'Ok') { setLastItemId(l.itemId ?? null); setEpc(''); setIdentifier(''); setName(''); setAttrs({}); } }
       else setMsg('Offline – queued for sync');
     } catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
   };
@@ -69,6 +71,7 @@ export default function CommissionScreen() {
         {type?.lifecycle?.initial && <Text style={[s.muted, { marginTop: 8 }]}>Initial state: {type.lifecycle.initial} · location: {settings.currentLocationName ?? 'none'}</Text>}
       </View>
       {msg && <Text style={{ color: msg.startsWith('✓') ? C.ok : C.warn, marginBottom: 10 }}>{msg}</Text>}
+      {lastItemId && <Button title="🖨 Print label for last item" onPress={async () => { try { setMsg(await printLabel(lastItemId)); } catch (e) { setMsg((e as Error).message); } }} style={{ marginBottom: 8 }} />}
       <Button title={busy ? 'Working…' : 'Commission'} tone="primary" onPress={commission} disabled={busy || !type || !/^[0-9A-F]{8,64}$/.test(epc) || (type?.attributeSchema.some((a) => a.required && !attrs[a.name]) ?? false)} />
     </ScrollView>
   );

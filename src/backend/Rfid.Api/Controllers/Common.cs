@@ -16,6 +16,7 @@ public static class Dto
         i.ParentItemId, ParentItem = i.ParentItem == null ? null : new { i.ParentItem.Id, i.ParentItem.Name, i.ParentItem.Identifier },
         i.Quantity, i.Unit, i.LotNumber, i.ExpiryDate, i.CycleCount, i.LastInspectedAt, i.NextInspectionDue, i.DueBackAt,
         i.LastSeenAt, i.LastSeenLocationId, i.LastSeenDeviceId, i.Cost, i.PurchasedAt, i.Attributes, i.CreatedAt,
+        i.PositionX, i.PositionY, i.PositionLocationId, i.PositionAt, i.PositionAccuracyM,
         Tags = i.Tags.Select(t => new { t.Id, t.Epc, t.Tid, t.Technology, t.Status }).ToList(),
     };
 

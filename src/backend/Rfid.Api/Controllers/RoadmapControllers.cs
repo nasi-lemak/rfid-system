@@ -62,16 +62,26 @@ public class IntegrationsController : ControllerBase
     private readonly AppDbContext _db; private readonly ICurrentContext _ctx; private readonly IntegrationService _svc;
     public IntegrationsController(AppDbContext db, ICurrentContext ctx, IntegrationService svc) { _db = db; _ctx = ctx; _svc = svc; }
 
-    private static object Map(IntegrationEndpoint e) => new { e.Id, e.Name, e.Url, HasSecret = !string.IsNullOrEmpty(e.Secret), e.Enabled, e.EventTypes, e.IncludeAlerts, e.Headers, e.BatchSize, e.EventCursor, e.AlertCursor, e.LastDeliveryAt, e.LastError, e.FailureCount, e.NextAttemptAt, e.DeliveredCount, e.CreatedAt };
+    private static object Map(IntegrationEndpoint e) => new { e.Id, e.Name, e.Url, HasSecret = !string.IsNullOrEmpty(e.Secret), e.Enabled, e.EventTypes, e.IncludeAlerts, e.Headers, e.BatchSize, e.EventCursor, e.AlertCursor, e.LastDeliveryAt, e.LastError, e.FailureCount, e.NextAttemptAt, e.DeliveredCount, e.CreatedAt, e.Format, e.AuthType, e.Username, e.TokenUrl, e.ClientId, e.Scope, e.Mapping, HasCredentials = !string.IsNullOrEmpty(e.ApiToken) || !string.IsNullOrEmpty(e.Password) || !string.IsNullOrEmpty(e.ClientSecret) };
 
     [HttpGet] public async Task<IActionResult> List() => Ok((await _db.IntegrationEndpoints.OrderBy(e => e.Name).ToListAsync()).Select(Map));
 
-    public record Write(string Name, string Url, string? Secret, bool Enabled, List<ItemEventType>? EventTypes, bool IncludeAlerts, Dictionary<string, object?>? Headers, int? BatchSize, DateTime? EventCursor);
+    public record Write(string Name, string Url, string? Secret, bool Enabled, List<ItemEventType>? EventTypes, bool IncludeAlerts, Dictionary<string, object?>? Headers, int? BatchSize, DateTime? EventCursor,
+        IntegrationFormat? Format = null, IntegrationAuth? AuthType = null, string? ApiToken = null, string? Username = null, string? Password = null, string? TokenUrl = null, string? ClientId = null, string? ClientSecret = null, string? Scope = null, Dictionary<string, object?>? Mapping = null);
+
+    private static void ApplyVendor(IntegrationEndpoint e, Write w)
+    {
+        if (w.Format.HasValue) e.Format = w.Format.Value; if (w.AuthType.HasValue) e.AuthType = w.AuthType.Value;
+        if (w.ApiToken != null) e.ApiToken = w.ApiToken == "" ? null : w.ApiToken; if (w.Username != null) e.Username = w.Username; if (w.Password != null) e.Password = w.Password == "" ? null : w.Password;
+        if (w.TokenUrl != null) e.TokenUrl = w.TokenUrl; if (w.ClientId != null) e.ClientId = w.ClientId; if (w.ClientSecret != null) e.ClientSecret = w.ClientSecret == "" ? null : w.ClientSecret; if (w.Scope != null) e.Scope = w.Scope;
+        if (w.Mapping != null) e.Mapping = w.Mapping;
+    }
 
     [HttpPost]
     public async Task<IActionResult> Create(Write w)
     {
         var e = new IntegrationEndpoint { TenantId = _ctx.TenantId, Name = w.Name, Url = w.Url, Secret = w.Secret, Enabled = w.Enabled, EventTypes = w.EventTypes ?? new(), IncludeAlerts = w.IncludeAlerts, Headers = w.Headers ?? new(), BatchSize = w.BatchSize ?? 100, EventCursor = w.EventCursor ?? DateTime.UtcNow, AlertCursor = w.EventCursor ?? DateTime.UtcNow };
+        ApplyVendor(e, w);
         _db.IntegrationEndpoints.Add(e); await _db.SaveChangesAsync(); return Ok(Map(e));
     }
 
@@ -81,6 +91,7 @@ public class IntegrationsController : ControllerBase
         var e = await _db.IntegrationEndpoints.FindAsync(id); if (e == null) return NotFound();
         e.Name = w.Name; e.Url = w.Url; if (w.Secret != null) e.Secret = w.Secret == "" ? null : w.Secret; e.Enabled = w.Enabled; e.EventTypes = w.EventTypes ?? new(); e.IncludeAlerts = w.IncludeAlerts; if (w.Headers != null) e.Headers = w.Headers; if (w.BatchSize.HasValue) e.BatchSize = w.BatchSize.Value;
         if (w.EventCursor.HasValue) { e.EventCursor = w.EventCursor.Value; e.AlertCursor = w.EventCursor.Value; }
+        ApplyVendor(e, w);
         e.NextAttemptAt = null; e.FailureCount = 0;
         await _db.SaveChangesAsync(); return Ok(Map(e));
     }
