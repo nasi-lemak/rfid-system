@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Rfid.Application.Contracts;
+using Rfid.Application.Security;
 using Rfid.Application.Services;
 using Rfid.Application.Templates;
 using Rfid.Domain;
@@ -13,12 +14,20 @@ namespace Rfid.Api.Controllers;
 [ApiController, Route("api/operations"), Authorize]
 public class OperationsController : ControllerBase
 {
-    private readonly AppDbContext _db; private readonly OperationProcessor _processor;
-    public OperationsController(AppDbContext db, OperationProcessor processor) { _db = db; _processor = processor; }
+    private readonly AppDbContext _db; private readonly OperationProcessor _processor; private readonly ISiteAccess _sites;
+    public OperationsController(AppDbContext db, OperationProcessor processor, ISiteAccess sites) { _db = db; _processor = processor; _sites = sites; }
+
+    private async Task EnsureSiteAsync(OperationRequest req, CancellationToken ct)
+    {
+        if (!_sites.Restricted) return;
+        if (req.FromLocationId != null) await _sites.EnsureAsync(req.FromLocationId, UserRole.Operator, ct);
+        if (req.ToLocationId != null) await _sites.EnsureAsync(req.ToLocationId, UserRole.Operator, ct);
+        if (req.FromLocationId == null && req.ToLocationId == null) await _sites.EnsureAsync(null, UserRole.Operator, ct); // no location → global role decides
+    }
 
     /// <summary>Executes an operation (receive, transfer, issue, return, count, dispatch, inspect, maintain, dispose, pack, unpack, processStage, commission, adjust).</summary>
     [HttpPost, Authorize(Policy = "Operator")]
-    public async Task<ActionResult<OperationResult>> Process(OperationRequest req, CancellationToken ct) => Ok(await _processor.ProcessAsync(req, ct));
+    public async Task<ActionResult<OperationResult>> Process(OperationRequest req, CancellationToken ct) { await EnsureSiteAsync(req, ct); return Ok(await _processor.ProcessAsync(req, ct)); }
 
     /// <summary>Batch endpoint for offline handhelds syncing a queue of operations.</summary>
     [HttpPost("batch"), Authorize(Policy = "Operator")]
@@ -89,13 +98,17 @@ public class IngestController : ControllerBase
 [ApiController, Route("api/stocktakes"), Authorize]
 public class StocktakesController : ControllerBase
 {
-    private readonly AppDbContext _db; private readonly StocktakeService _svc;
-    public StocktakesController(AppDbContext db, StocktakeService svc) { _db = db; _svc = svc; }
+    private readonly AppDbContext _db; private readonly StocktakeService _svc; private readonly ISiteAccess _sites;
+    public StocktakesController(AppDbContext db, StocktakeService svc, ISiteAccess sites) { _db = db; _svc = svc; _sites = sites; }
 
     public record CreateRequest(string Name, Guid LocationId, Guid? ItemTypeId);
 
     [HttpPost, Authorize(Policy = "Operator")]
-    public async Task<IActionResult> Create(CreateRequest r, CancellationToken ct) => Ok(StocktakeService.Summarize(await _svc.CreateAsync(r.Name, r.LocationId, r.ItemTypeId, ct)));
+    public async Task<IActionResult> Create(CreateRequest r, CancellationToken ct)
+    {
+        await _sites.EnsureAsync(r.LocationId, UserRole.Operator, ct);
+        return Ok(StocktakeService.Summarize(await _svc.CreateAsync(r.Name, r.LocationId, r.ItemTypeId, ct)));
+    }
 
     [HttpGet]
     public async Task<IActionResult> List()

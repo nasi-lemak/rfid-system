@@ -68,6 +68,8 @@ public class Item : TenantEntity
     public Guid? PositionLocationId { get; set; }
     public DateTime? PositionAt { get; set; }
     public double? PositionAccuracyM { get; set; }
+    /// <summary>Serialised Kalman track state so smoothing continues across API nodes and restarts.</summary>
+    public string? PositionTrack { get; set; }
     public decimal? Cost { get; set; }
     public DateOnly? PurchasedAt { get; set; }
     public Dictionary<string, object?> Attributes { get; set; } = new();

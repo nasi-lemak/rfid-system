@@ -6,7 +6,9 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Rfid.Api.Auth;
 using Rfid.Api.Hubs;
+using Rfid.Application.Cluster;
 using Rfid.Application.Contracts;
+using Rfid.Application.Security;
 using Rfid.Application.Services;
 using Rfid.Application.Templates;
 using Rfid.Infrastructure.Persistence;
@@ -26,7 +28,10 @@ builder.Services.AddSwaggerGen(o =>
     o.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme { In = ParameterLocation.Header, Name = "Authorization", Type = SecuritySchemeType.Http, Scheme = "bearer" });
     o.AddSecurityRequirement(new OpenApiSecurityRequirement { { new OpenApiSecurityScheme { Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" } }, Array.Empty<string>() } });
 });
-builder.Services.AddSignalR();
+var signalR = builder.Services.AddSignalR();
+var redis = cfg["Redis:ConnectionString"];
+if (!string.IsNullOrWhiteSpace(redis)) signalR.AddStackExchangeRedis(redis, o => o.Configuration.ChannelPrefix = StackExchange.Redis.RedisChannel.Literal(cfg["Redis:ChannelPrefix"] ?? "rfid"));
+builder.Services.AddMemoryCache();
 builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.WithOrigins(cfg.GetSection("Cors:Origins").Get<string[]>() ?? new[] { "http://localhost:5173" })
     .AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
 
@@ -54,7 +59,7 @@ builder.Services.AddHostedService<Rfid.Api.Background.IntegrationDispatcherServi
 builder.Services.AddHostedService<Rfid.Api.Background.MqttIngestService>();
 builder.Services.AddSingleton<Rfid.Api.Background.LlrpReaderService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Rfid.Api.Background.LlrpReaderService>());
-builder.Services.AddSingleton<Rfid.Application.Positioning.IPositionSmoother, Rfid.Application.Positioning.PositionSmoother>();
+builder.Services.AddSingleton<Rfid.Application.Positioning.IPositionSmoother, Rfid.Application.Positioning.PersistentPositionSmoother>();
 builder.Services.AddScoped<PositionService>();
 builder.Services.AddScoped<ImportService>();
 builder.Services.AddScoped<PrintQueueService>();
@@ -62,9 +67,26 @@ builder.Services.AddHostedService<Rfid.Api.Background.PrintQueueWorkerService>()
 builder.Services.AddHttpClient<IOAuthTokenProvider, Rfid.Api.Background.HttpOAuthTokenProvider>();
 builder.Services.AddScoped<Rfid.Infrastructure.Persistence.Demo.DemoSeeder>();
 builder.Services.AddSingleton<JwtService>();
+builder.Services.AddScoped<LeaseService>();
+builder.Services.AddScoped<SsoUserMapper>();
+builder.Services.Configure<SsoOptions>(cfg.GetSection("Oidc"));
+builder.Services.AddScoped<ISiteAccess>(SiteAccessFactory.Create);
+builder.Services.AddTransient<Microsoft.AspNetCore.Authentication.IClaimsTransformation, OidcClaimsTransformation>();
 
 var jwtKey = cfg["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key not configured");
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(o =>
+var sso = cfg.GetSection("Oidc").Get<SsoOptions>() ?? new SsoOptions();
+var ssoEnabled = sso.Enabled && !string.IsNullOrWhiteSpace(sso.Authority);
+static void AcceptHubQueryToken(JwtBearerOptions o) => o.Events = new JwtBearerEvents
+{
+    // SignalR sends the token as a query string parameter.
+    OnMessageReceived = ctx =>
+    {
+        var token = ctx.Request.Query["access_token"];
+        if (!string.IsNullOrEmpty(token) && ctx.HttpContext.Request.Path.StartsWithSegments("/hubs")) ctx.Token = token;
+        return Task.CompletedTask;
+    }
+};
+var auth = builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(o =>
 {
     o.TokenValidationParameters = new TokenValidationParameters
     {
@@ -72,21 +94,26 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
         ValidateAudience = false, ValidateLifetime = true,
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
     };
-    // SignalR sends the token as a query string parameter.
-    o.Events = new JwtBearerEvents
-    {
-        OnMessageReceived = ctx =>
-        {
-            var token = ctx.Request.Query["access_token"];
-            if (!string.IsNullOrEmpty(token) && ctx.HttpContext.Request.Path.StartsWithSegments("/hubs")) ctx.Token = token;
-            return Task.CompletedTask;
-        }
-    };
+    AcceptHubQueryToken(o);
 });
+if (ssoEnabled)
+{
+    // Second bearer scheme: tokens issued by the external OIDC provider (Entra ID, Keycloak, Okta, Auth0 …).
+    auth.AddJwtBearer("oidc", o =>
+    {
+        o.Authority = sso.Authority; o.RequireHttpsMetadata = sso.Authority!.StartsWith("https", StringComparison.OrdinalIgnoreCase);
+        o.MapInboundClaims = false;
+        o.TokenValidationParameters = new TokenValidationParameters { ValidateAudience = !string.IsNullOrEmpty(sso.Audience), ValidAudiences = new[] { sso.Audience ?? "", sso.ClientId ?? "" }, NameClaimType = "name", RoleClaimType = sso.RoleClaim };
+        AcceptHubQueryToken(o);
+    });
+}
 builder.Services.AddAuthorization(o =>
 {
-    o.AddPolicy("Admin", p => p.RequireRole("Admin"));
-    o.AddPolicy("Operator", p => p.RequireRole("Admin", "Operator", "Device"));
+    var schemes = ssoEnabled ? new[] { JwtBearerDefaults.AuthenticationScheme, "oidc" } : new[] { JwtBearerDefaults.AuthenticationScheme };
+    o.DefaultPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder(schemes).RequireAuthenticatedUser().RequireClaim(PlatformClaims.Tenant).Build();
+    o.AddPolicy("Admin", p => p.AddAuthenticationSchemes(schemes).RequireAuthenticatedUser().RequireClaim(PlatformClaims.Tenant).RequireRole("Admin"));
+    // Operators: global role, a device token, or an Operator/Admin role on at least one site (per-location checks happen in the controllers).
+    o.AddPolicy("Operator", p => p.AddAuthenticationSchemes(schemes).RequireAuthenticatedUser().RequireClaim(PlatformClaims.Tenant).RequireAssertion(c => PlatformClaims.CanOperateSomewhere(c.User)));
 });
 
 var app = builder.Build();
@@ -99,7 +126,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 app.MapHub<LiveHub>("/hubs/live");
-app.MapGet("/health", () => Results.Ok(new { status = "ok", time = DateTime.UtcNow }));
+app.MapGet("/health", () => Results.Ok(new { status = "ok", node = ClusterNode.Id, time = DateTime.UtcNow }));
 
 using (var scope = app.Services.CreateScope())
 {

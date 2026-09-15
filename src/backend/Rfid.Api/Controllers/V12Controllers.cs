@@ -27,6 +27,36 @@ public class PositionsController : ControllerBase
     /// <summary>Anchors and last-known item positions inside a location (maxAgeMinutes default 720).</summary>
     [HttpGet("floor-plans/{locationId:guid}")]
     public async Task<IActionResult> FloorPlan(Guid locationId, int maxAgeMinutes = 720, CancellationToken ct = default) => Ok(await _svc.FloorPlanAsync(locationId, TimeSpan.FromMinutes(maxAgeMinutes), ct));
+
+    /// <summary>Dwell-time heat map for a floor plan: seconds spent per grid cell in the window (default last 24h, 1 m cells).</summary>
+    [HttpGet("heatmap")]
+    public async Task<IActionResult> HeatMap(Guid locationId, DateTime? from, DateTime? to, double cellM = 1.0, CancellationToken ct = default)
+    {
+        var t = to ?? DateTime.UtcNow; var f = from ?? t.AddHours(-24);
+        return Ok(await _svc.HeatMapAsync(locationId, f, t, Math.Clamp(cellM, 0.25, 20), ct));
+    }
+
+    /// <summary>Recorded path of an item (position fixes) in the window, oldest first.</summary>
+    [HttpGet("history")]
+    public async Task<IActionResult> History(Guid itemId, DateTime? from, DateTime? to, int take = 5000, CancellationToken ct = default)
+    {
+        var t = to ?? DateTime.UtcNow; var f = from ?? t.AddHours(-24);
+        var points = await _svc.HistoryAsync(itemId, f, t, Math.Clamp(take, 1, 20000), ct);
+        var item = await _db.Items.Where(i => i.Id == itemId).Select(i => new { i.Id, i.Name, i.Identifier }).FirstOrDefaultAsync(ct);
+        return Ok(new { Item = item, From = f, To = t, Points = points });
+    }
+
+    /// <summary>Items that have recorded fixes in a location during the window – candidates for path replay.</summary>
+    [HttpGet("history/items")]
+    public async Task<IActionResult> HistoryItems(Guid locationId, DateTime? from, DateTime? to, CancellationToken ct = default)
+    {
+        var t = to ?? DateTime.UtcNow; var f = from ?? t.AddHours(-24);
+        var rows = await _db.PositionFixes.Where(p => p.LocationId == locationId && p.At >= f && p.At <= t).GroupBy(p => p.ItemId)
+            .Select(g => new { ItemId = g.Key, Fixes = g.Count(), First = g.Min(p => p.At), Last = g.Max(p => p.At) }).OrderByDescending(x => x.Fixes).Take(200).ToListAsync(ct);
+        var ids = rows.Select(r => r.ItemId).ToList();
+        var names = await _db.Items.Where(i => ids.Contains(i.Id)).Select(i => new { i.Id, i.Name, i.Identifier }).ToDictionaryAsync(i => i.Id, ct);
+        return Ok(rows.Select(r => new { r.ItemId, Name = names.GetValueOrDefault(r.ItemId)?.Name, Identifier = names.GetValueOrDefault(r.ItemId)?.Identifier, r.Fixes, r.First, r.Last }));
+    }
 }
 
 [ApiController, Route("api/labels/designs"), Authorize(Policy = "Operator")]

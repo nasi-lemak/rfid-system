@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Rfid.Application.Contracts;
+using Rfid.Application.Security;
 using Rfid.Application.Services;
 using Rfid.Domain;
 using Rfid.Domain.Entities;
@@ -13,8 +14,8 @@ namespace Rfid.Api.Controllers;
 public class ItemsController : ControllerBase
 {
     private readonly AppDbContext _db;
-    private readonly ICurrentContext _ctx;
-    public ItemsController(AppDbContext db, ICurrentContext ctx) { _db = db; _ctx = ctx; }
+    private readonly ICurrentContext _ctx; private readonly ISiteAccess _sites;
+    public ItemsController(AppDbContext db, ICurrentContext ctx, ISiteAccess sites) { _db = db; _ctx = ctx; _sites = sites; }
 
     private IQueryable<Item> Base() => _db.Items.Include(i => i.ItemType).Include(i => i.CurrentLocation).Include(i => i.CustodianParty).Include(i => i.ParentItem).Include(i => i.Tags);
 
@@ -23,7 +24,7 @@ public class ItemsController : ControllerBase
         Guid? custodianPartyId = null, Guid? parentItemId = null, string? filter = null, int? page = null, int? pageSize = null)
     {
         var (p, s) = Query.Page(page, pageSize);
-        var query = Base().AsQueryable();
+        var query = SiteAccess.Filter(Base(), await _sites.AllowedPathsAsync());
         if (!string.IsNullOrWhiteSpace(q))
         {
             var like = $"%{q}%";

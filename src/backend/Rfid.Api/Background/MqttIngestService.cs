@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using MQTTnet;
 using MQTTnet.Client;
 using Rfid.Api.Auth;
+using Rfid.Application.Cluster;
 using Rfid.Application.Services;
 using Rfid.Domain;
 using Rfid.Infrastructure.Persistence;
@@ -31,13 +32,21 @@ public class MqttIngestService : BackgroundService
         var topics = _cfg.GetSection("Mqtt:Topics").Get<string[]>() ?? new[] { "rfid/#" };
         _client = new MqttFactory().CreateMqttClient();
         _client.ApplicationMessageReceivedAsync += OnMessageAsync;
+        var leader = false;
         while (!ct.IsCancellationRequested)
         {
             try
             {
-                if (!_client.IsConnected)
+                bool hold;
+                using (var ls = _scopes.CreateScope()) hold = await ls.ServiceProvider.GetRequiredService<LeaseService>().TryAcquireAsync("job:mqtt", ClusterNode.Id, TimeSpan.FromSeconds(30), ct: ct);
+                if (hold != leader) { leader = hold; _log.LogInformation("MQTT ingest: node {Node} is now {State}", ClusterNode.Id, hold ? "the subscriber" : "standby"); }
+                if (!hold)
                 {
-                    var b = new MqttClientOptionsBuilder().WithTcpServer(host, port).WithClientId("rfid-platform-" + Environment.MachineName);
+                    if (_client.IsConnected) await _client.DisconnectAsync(cancellationToken: ct);
+                }
+                else if (!_client.IsConnected)
+                {
+                    var b = new MqttClientOptionsBuilder().WithTcpServer(host, port).WithClientId("rfid-platform-" + ClusterNode.Id);
                     if (_cfg["Mqtt:Username"] is { } u) b = b.WithCredentials(u, _cfg["Mqtt:Password"]);
                     await _client.ConnectAsync(b.Build(), ct);
                     foreach (var t in topics) await _client.SubscribeAsync(t, cancellationToken: ct);

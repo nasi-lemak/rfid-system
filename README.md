@@ -129,7 +129,29 @@ See [`docs/INTEGRATION.md`](docs/INTEGRATION.md).
 - **Print queue** — durable print jobs with retries, reprint audit trail (`LabelPrinted` events),
   label-stock tracking with low-stock alerts.
 
+## v1.4
+
+- **Multi-node deployment** — run any number of API replicas against one PostgreSQL. Background
+  jobs (`job:*`), the MQTT subscriber and every LLRP reader connection (`llrp:{deviceId}`) are
+  coordinated with database leases; a node that dies is replaced within one interval. Kalman
+  position tracks live on the item row so any node continues them; set `Redis:ConnectionString`
+  for a SignalR backplane so live updates reach clients on every node. `GET /api/cluster` and the
+  **Cluster & system** page show nodes, leases and feature flags.
+- **RTLS history** — position fixes are sampled on movement (`position_fixes`, retention
+  `Positions:RetentionDays`); the floor plan gains a dwell **heat map** and a per-item **path
+  replay** with a time slider (`/api/positions/heatmap`, `/api/positions/history`).
+- **SSO (OIDC)** — configure `Oidc:*` (Entra ID, Keycloak, Okta, Auth0 …): the web app offers
+  *Sign in with SSO* (authorization-code + PKCE), the API accepts the provider's tokens as a second
+  bearer scheme, users are provisioned on first login and IdP groups map to roles (`Oidc:RoleMap`).
+- **Per-site RBAC** — users can be restricted to sites with a role per site (Users → *Sites*):
+  items, locations and readers are filtered to those subtrees and operations/stocktakes are
+  refused elsewhere.
+- **Handheld offline maps** — the app caches master data and floor plans (Settings → *Download for
+  offline*) and the new **Floor plan** screen (SVG) shows anchors and positions, highlighting the item
+  you looked up, even without coverage.
+
 ## Roadmap
 
-Multi-node deployment (distributed LLRP/print workers, Redis-backed position tracks) · RTLS heat maps
-and path replay · SSO (OIDC) and per-site RBAC · mobile offline maps and floor plans.
+Reader firmware management and health SLAs · geofenced GPS assets (vehicles, containers) with map
+tiles · configurable dashboards and KPI widgets · rule actions (e-mail/SMS/Teams) and escalation
+policies · data warehouse export (Parquet) and long-term analytics.

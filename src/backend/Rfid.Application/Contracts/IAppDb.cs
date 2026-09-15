@@ -27,6 +27,9 @@ public interface IAppDb
     DbSet<StocktakeSchedule> StocktakeSchedules { get; }
     DbSet<IntegrationEndpoint> IntegrationEndpoints { get; }
     DbSet<PrintJob> PrintJobs { get; }
+    DbSet<WorkerLease> WorkerLeases { get; }
+    DbSet<PositionFix> PositionFixes { get; }
+    DbSet<UserSiteAccess> UserSiteAccess { get; }
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }
 

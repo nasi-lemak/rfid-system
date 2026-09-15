@@ -62,6 +62,7 @@ export default function LookupScreen() {
           <View style={[s.row, { marginBottom: 12 }]}>
             {['Transfer', 'Issue', 'Return', 'Count', 'ProcessStage', 'Inspect'].map((op) => <Button key={op} small title={op} onPress={() => nav.navigate('Operation', { epcs: [epc], type: op })} />)}
             <Button small title="Locate" tone="primary" onPress={() => nav.navigate('Locate', { epc, name: item.name })} />
+            <Button small title="On map" onPress={() => nav.navigate('FloorPlan', { itemId: item.id })} />
             <Button small title="🖨 Print label" onPress={doPrint} />
           </View>
           {printMsg && <Text style={[s.muted, { marginBottom: 8 }]}>{printMsg}</Text>}

@@ -1,11 +1,16 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useFloorPlan, useFloorPlans, useLocations, useMuster, useTiming, useZones } from '../api/hooks';
+import { useFloorPlan, useFloorPlans, useHeatMap, useHistoryItems, useLocations, useMuster, usePathHistory, useTiming, useZones } from '../api/hooks';
 import { Badge, fmt } from '../components/ui';
 
 export default function Presence() {
   const [tab, setTab] = useState<'zones' | 'muster' | 'timing' | 'floor'>('zones');
-  const plans = useFloorPlans(); const [planId, setPlanId] = useState(''); const plan = useFloorPlan(planId || plans.data?.[0]?.id);
+  const plans = useFloorPlans(); const [planId, setPlanId] = useState(''); const activePlan = planId || plans.data?.[0]?.id; const plan = useFloorPlan(activePlan);
+  const [layer, setLayer] = useState<'live' | 'heat' | 'replay'>('live'); const [hours, setHours] = useState(24); const [cellM, setCellM] = useState(1);
+  const heat = useHeatMap(activePlan, hours, cellM, layer === 'heat');
+  const histItems = useHistoryItems(layer === 'replay' ? activePlan : undefined, hours);
+  const [replayItem, setReplayItem] = useState(''); const path = usePathHistory(layer === 'replay' ? (replayItem || histItems.data?.[0]?.itemId) : undefined, hours);
+  const [cursor, setCursor] = useState(1); // 0..1 fraction of the path shown
   const locs = useLocations();
   const sites = locs.data?.filter((l) => l.kind === 'Site') ?? [];
   const events = locs.data?.filter((l) => locs.data?.some((c) => c.kind === 'Checkpoint' && c.parentId === l.id)) ?? [];
@@ -27,21 +32,38 @@ export default function Presence() {
       {tab === 'floor' && <>
         <div className="row" style={{ marginBottom: 12 }}><select value={planId || plans.data?.[0]?.id || ''} onChange={(e) => setPlanId(e.target.value)} style={{ maxWidth: 320 }}>{plans.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select><span className="muted small">Antennas with x/y act as anchors; positions are RSSI trilateration (log-distance model). Set <code>widthM</code>/<code>heightM</code> on the location.</span></div>
         {plans.data?.length === 0 && <div className="panel empty">No floor plans yet. Give antennas x/y coordinates (Readers &amp; devices) and a location <code>widthM</code>/<code>heightM</code>.</div>}
-        {plan.data && (() => { const w = plan.data.widthM ?? Math.max(10, ...plan.data.anchors.map((a) => a.x + 1)); const h = plan.data.heightM ?? Math.max(10, ...plan.data.anchors.map((a) => a.y + 1)); const sc = Math.min(1100 / w, 600 / h); return (
+        {plan.data && (() => { const w = plan.data.widthM ?? Math.max(10, ...plan.data.anchors.map((a) => a.x + 1)); const h = plan.data.heightM ?? Math.max(10, ...plan.data.anchors.map((a) => a.y + 1)); const sc = Math.min(1100 / w, 600 / h);
+          const pts = path.data?.points ?? []; const shown = pts.slice(0, Math.max(1, Math.round(pts.length * cursor))); const head = shown[shown.length - 1]; const maxSec = Math.max(1, ...(heat.data?.cells.map((c) => c.seconds) ?? [1]));
+          return (
           <div className="grid" style={{ gridTemplateColumns: '1fr 300px' }}>
             <div className="panel" style={{ overflow: 'auto' }}>
+              <div className="row" style={{ marginBottom: 8, flexWrap: 'wrap' }}>
+                <div className="tabs" style={{ marginBottom: 0, borderBottom: 'none' }}>{(['live', 'heat', 'replay'] as const).map((l) => <button key={l} className={layer === l ? 'active' : ''} onClick={() => setLayer(l)}>{l === 'live' ? 'Live positions' : l === 'heat' ? 'Heat map' : 'Path replay'}</button>)}</div>
+                {layer !== 'live' && <select value={hours} onChange={(e) => setHours(Number(e.target.value))} style={{ maxWidth: 140 }}>{[1, 4, 8, 24, 72, 168].map((hh) => <option key={hh} value={hh}>last {hh < 24 ? `${hh} h` : `${hh / 24} d`}</option>)}</select>}
+                {layer === 'heat' && <select value={cellM} onChange={(e) => setCellM(Number(e.target.value))} style={{ maxWidth: 120 }}>{[0.5, 1, 2, 5].map((c) => <option key={c} value={c}>{c} m cells</option>)}</select>}
+                {layer === 'replay' && <select value={replayItem || histItems.data?.[0]?.itemId || ''} onChange={(e) => { setReplayItem(e.target.value); setCursor(1); }} style={{ maxWidth: 260 }}>{histItems.data?.map((i) => <option key={i.itemId} value={i.itemId}>{i.name ?? i.identifier} · {i.fixes} fixes</option>)}{histItems.data?.length === 0 && <option value="">No recorded paths</option>}</select>}
+              </div>
               <svg width={w * sc + 40} height={h * sc + 40} style={{ background: 'var(--bg)', borderRadius: 8 }}>
                 <g transform="translate(20,20)">
                   <rect x={0} y={0} width={w * sc} height={h * sc} fill="none" stroke="var(--border)" strokeDasharray="6 4" />
+                  {layer === 'heat' && heat.data?.cells.map((c) => <rect key={`${c.ix}:${c.iy}`} x={c.x * sc} y={c.y * sc} width={heat.data!.cellM * sc} height={heat.data!.cellM * sc} fill="var(--crit)" fillOpacity={0.12 + 0.75 * Math.sqrt(c.seconds / maxSec)}><title>{`${c.x}–${c.x + heat.data!.cellM} m, ${c.y}–${c.y + heat.data!.cellM} m: ${Math.round(c.seconds / 60)} min dwell · ${c.items} item(s) · ${c.samples} samples`}</title></rect>)}
                   {Array.from({ length: Math.floor(w) + 1 }).filter((_, i) => i % 5 === 0).map((_, i) => <line key={'gx' + i} x1={i * 5 * sc} y1={0} x2={i * 5 * sc} y2={h * sc} stroke="var(--border)" strokeOpacity={0.5} />)}
                   {Array.from({ length: Math.floor(h) + 1 }).filter((_, i) => i % 5 === 0).map((_, i) => <line key={'gy' + i} x1={0} y1={i * 5 * sc} x2={w * sc} y2={i * 5 * sc} stroke="var(--border)" strokeOpacity={0.5} />)}
                   {plan.data.anchors.map((a) => <g key={a.antennaId} transform={`translate(${a.x * sc},${a.y * sc})`}><rect x={-7} y={-7} width={14} height={14} fill="var(--warn)" rx={2} /><text x={10} y={4} fontSize={11} fill="var(--muted)">{a.device} #{a.port}</text></g>)}
-                  {plan.data.items.map((i) => <g key={i.itemId} transform={`translate(${i.x * sc},${i.y * sc})`}><circle r={Math.max(6, (i.accuracyM ?? 1) * sc)} fill="var(--primary)" fillOpacity={0.15} /><circle r={6} fill="var(--primary)" /><text x={9} y={4} fontSize={12} fill="var(--text)">{i.person ?? i.name}</text></g>)}
+                  {layer === 'live' && plan.data.items.map((i) => <g key={i.itemId} transform={`translate(${i.x * sc},${i.y * sc})`}><circle r={Math.max(6, (i.accuracyM ?? 1) * sc)} fill="var(--primary)" fillOpacity={0.15} /><circle r={6} fill="var(--primary)" /><text x={9} y={4} fontSize={12} fill="var(--text)">{i.person ?? i.name}</text></g>)}
+                  {layer === 'replay' && shown.length > 0 && <>
+                    <polyline points={shown.map((p) => `${p.x * sc},${p.y * sc}`).join(' ')} fill="none" stroke="var(--primary)" strokeWidth={2} strokeOpacity={0.8} />
+                    {shown.map((p, i) => <circle key={i} cx={p.x * sc} cy={p.y * sc} r={2.5} fill="var(--primary)" fillOpacity={0.5} />)}
+                    {head && <g transform={`translate(${head.x * sc},${head.y * sc})`}><circle r={Math.max(6, (head.accuracyM ?? 1) * sc)} fill="var(--primary)" fillOpacity={0.15} /><circle r={7} fill="var(--primary)" stroke="#fff" strokeWidth={2} /><text x={10} y={4} fontSize={12} fill="var(--text)">{path.data?.item?.name} · {new Date(head.at).toLocaleTimeString()}</text></g>}
+                  </>}
                 </g>
               </svg>
-              <div className="muted small">{w} m × {h} m · {plan.data.anchors.length} anchors · {plan.data.items.length} positioned items (last 12 h)</div>
+              {layer === 'replay' && pts.length > 0 && <div className="row" style={{ marginTop: 8 }}><input type="range" min={0} max={1} step={0.001} value={cursor} onChange={(e) => setCursor(Number(e.target.value))} style={{ flex: 1 }} /><span className="small muted" style={{ minWidth: 220 }}>{shown.length}/{pts.length} fixes · {new Date(pts[0].at).toLocaleString()} → {head ? new Date(head.at).toLocaleTimeString() : ''}</span></div>}
+              <div className="muted small">{w} m × {h} m · {plan.data.anchors.length} anchors · {layer === 'live' ? `${plan.data.items.length} positioned items (last 12 h)` : layer === 'heat' ? `${heat.data?.cells.length ?? 0} cells with dwell in the last ${hours} h (darker = longer)` : `${pts.length} fixes in the last ${hours} h`}</div>
             </div>
-            <div className="panel"><h3>Positioned items</h3>{plan.data.items.map((i) => <div key={i.itemId} style={{ padding: '6px 0', borderBottom: '1px solid var(--border)' }}><Link to={`/items/${i.itemId}`}>{i.person ?? i.name}</Link><div className="muted small">({i.x}, {i.y}) m ± {i.accuracyM} · {fmt.ago(i.at)}</div></div>)}{plan.data.items.length === 0 && <span className="muted">Nothing positioned recently</span>}</div>
+            {layer === 'live' && <div className="panel"><h3>Positioned items</h3>{plan.data.items.map((i) => <div key={i.itemId} style={{ padding: '6px 0', borderBottom: '1px solid var(--border)' }}><Link to={`/items/${i.itemId}`}>{i.person ?? i.name}</Link><div className="muted small">({i.x}, {i.y}) m ± {i.accuracyM} · {fmt.ago(i.at)}</div></div>)}{plan.data.items.length === 0 && <span className="muted">Nothing positioned recently</span>}</div>}
+            {layer === 'heat' && <div className="panel"><h3>Hot spots</h3>{heat.data?.cells.slice(0, 12).map((c) => <div key={`${c.ix}:${c.iy}`} style={{ padding: '6px 0', borderBottom: '1px solid var(--border)' }}><b>({c.x}, {c.y}) m</b> · {Math.round(c.seconds / 60)} min<div className="muted small">{c.items} item(s) · {c.samples} samples</div></div>)}{heat.data?.cells.length === 0 && <span className="muted">No position history in this window</span>}</div>}
+            {layer === 'replay' && <div className="panel"><h3>Recorded paths</h3>{histItems.data?.map((i) => <div key={i.itemId} style={{ padding: '6px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontWeight: i.itemId === (replayItem || histItems.data?.[0]?.itemId) ? 600 : 400 }} onClick={() => { setReplayItem(i.itemId); setCursor(1); }}>{i.name ?? i.identifier}<div className="muted small">{i.fixes} fixes · {fmt.ago(i.first)} → {fmt.ago(i.last)}</div></div>)}{histItems.data?.length === 0 && <span className="muted">No fixes recorded in this window</span>}</div>}
           </div>); })()}
       </>}
       {tab === 'muster' && <>

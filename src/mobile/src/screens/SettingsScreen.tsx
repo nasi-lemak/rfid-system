@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { FlatList, Pressable, ScrollView, Text, View } from 'react-native';
-import { Api, type LocationRow } from '../api/client';
+import { Api, clearCache, type LocationRow } from '../api/client';
 import { useReader } from '../reader';
 import type { ReaderKind } from '../reader/types';
 import { SimulatedReader } from '../reader/SimulatedReader';
@@ -52,6 +52,11 @@ export default function SettingsScreen() {
         <Text style={s.h2}>Offline queue</Text>
         <Text style={s.text}>{queue} pending operation(s)</Text>
         <View style={[s.row, { marginTop: 8 }]}><Button small title="Sync now" onPress={() => sync().then((r) => { setMsg(`Sent ${r.sent}, ${r.remaining} remaining`); readQueue().then((q) => setQueue(q.length)); })} /><Button small tone="danger" title="Discard queue" onPress={() => clearQueue().then(() => setQueue(0))} /></View>
+      </View>
+      <View style={s.panel}>
+        <Text style={s.h2}>Offline data</Text>
+        <Text style={s.muted}>Locations, parties, item types and floor plans are cached on the device so lookups, operations and the map keep working without coverage.</Text>
+        <View style={[s.row, { marginTop: 8 }]}><Button small tone="primary" title="Download for offline" onPress={() => Api.prefetchOffline().then((r) => setMsg(`Cached ${r.locations} locations, ${r.parties} parties, ${r.itemTypes} item types, ${r.floorPlans} floor plans`)).catch((e) => setMsg((e as Error).message))} /><Button small title="Clear cache" onPress={() => clearCache().then((n) => setMsg(`Cleared ${n} cached entries`))} /></View>
       </View>
       <View style={s.panel}>
         <Text style={s.h2}>Account</Text>

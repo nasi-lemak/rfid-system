@@ -52,7 +52,12 @@ export interface Dashboard {
   readsPerDay: { day: string; count: number }[]; opsPerDay: { day: string; count: number }[];
 }
 export interface Lookups { operationTypes: string[]; locationKinds: string[]; partyKinds: string[]; deviceKinds: string[]; tagTechnologies: string[]; eventTypes: string[]; ruleActions: string[]; severities: string[]; itemStatuses: string[]; ruleFields: string[]; ruleOps: string[] }
-export interface AuthUser { id: Guid; email: string; displayName: string; role: string; tenantId: Guid; tenantName?: string }
+export interface AuthUser { id: Guid; email: string; displayName: string; role: string; tenantId: Guid; tenantName?: string; restrictToSites?: boolean; sso?: string | null; sites?: { siteLocationId: Guid; siteName?: string | null; role: string }[] }
+export interface HeatMap { locationId: Guid; cellM: number; widthM?: number | null; heightM?: number | null; from: string; to: string; cells: { ix: number; iy: number; x: number; y: number; samples: number; seconds: number; items: number }[] }
+export interface PathHistory { item?: { id: Guid; name: string; identifier: string } | null; from: string; to: string; points: { x: number; y: number; accuracyM?: number | null; at: string; locationId: Guid }[] }
+export interface HistoryItem { itemId: Guid; name?: string | null; identifier?: string | null; fixes: number; first: string; last: string }
+export interface ClusterStatus { node: { id: string; startedAt: string; machine: string; pid: number; uptimeSeconds: number }; nodes: { id: string; leases: number; since: string; isThisNode: boolean }[]; leases: { name: string; owner: string; acquiredAt: string; expiresAt: string; active: boolean; heldByThisNode: boolean; version: number }[]; features: { redisBackplane: boolean; mqtt: boolean; llrp: boolean; sso: boolean; positionRetentionDays: number } }
+export interface UserSites { id: Guid; restrictToSites: boolean; sites: { siteLocationId: Guid; siteName: string; sitePath: string; role: string }[] }
 
 export interface PresentItem { itemId: Guid; name: string; identifier: string; itemType?: string | null; enteredAt: string; lastSeenAt: string; dwellMinutes: number; rssi?: number | null; person?: string | null }
 export interface ZoneOccupancy { locationId: Guid; location: string; kind: string; present: number; items: PresentItem[] }

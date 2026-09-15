@@ -14,6 +14,10 @@ public sealed class KalmanTrack
 
     public KalmanTrack(double x, double y, DateTime at) { _x = x; _y = y; UpdatedAt = at; }
 
+    public record State(double X, double Y, double Vx, double Vy, double[] Px, double[] Py, DateTime At, Guid Zone);
+    public State ToState(Guid zone) => new(_x, _y, _vx, _vy, _px, _py, UpdatedAt, zone);
+    public static KalmanTrack FromState(State s) => new(s.X, s.Y, s.At) { _vx = s.Vx, _vy = s.Vy, _px = s.Px, _py = s.Py };
+
     public (double x, double y, double accuracy) Update(double mx, double my, double measurementAccuracyM, DateTime at)
     {
         var dt = Math.Clamp((at - UpdatedAt).TotalSeconds, 0, 60);
@@ -40,7 +44,7 @@ public sealed class KalmanTrack
     }
 }
 
-public interface IPositionSmoother { (double x, double y, double accuracy) Smooth(Guid itemId, Guid zoneId, double x, double y, double accuracy, DateTime at); }
+public interface IPositionSmoother { (double x, double y, double accuracy) Smooth(Rfid.Domain.Entities.Item item, Guid zoneId, double x, double y, double accuracy, DateTime at); }
 
 /// <summary>Keeps one Kalman track per item (resets when the item changes zone or has been unseen for a while).</summary>
 public class PositionSmoother : IPositionSmoother
@@ -48,10 +52,28 @@ public class PositionSmoother : IPositionSmoother
     private readonly ConcurrentDictionary<Guid, (Guid zone, KalmanTrack track)> _tracks = new();
     public TimeSpan ResetAfter { get; init; } = TimeSpan.FromMinutes(10);
 
-    public (double x, double y, double accuracy) Smooth(Guid itemId, Guid zoneId, double x, double y, double accuracy, DateTime at)
+    public (double x, double y, double accuracy) Smooth(Rfid.Domain.Entities.Item item, Guid zoneId, double x, double y, double accuracy, DateTime at)
     {
-        if (_tracks.TryGetValue(itemId, out var t) && t.zone == zoneId && at - t.track.UpdatedAt < ResetAfter) return t.track.Update(x, y, accuracy, at);
-        _tracks[itemId] = (zoneId, new KalmanTrack(x, y, at));
+        if (_tracks.TryGetValue(item.Id, out var t) && t.zone == zoneId && at - t.track.UpdatedAt < ResetAfter) return t.track.Update(x, y, accuracy, at);
+        _tracks[item.Id] = (zoneId, new KalmanTrack(x, y, at));
         return (Math.Round(x, 2), Math.Round(y, 2), Math.Round(accuracy, 2));
+    }
+}
+
+/// <summary>Multi-node safe smoother: the track state lives on the item row (Item.PositionTrack), so any API node continues the same track.</summary>
+public class PersistentPositionSmoother : IPositionSmoother
+{
+    public TimeSpan ResetAfter { get; init; } = TimeSpan.FromMinutes(10);
+    private static readonly System.Text.Json.JsonSerializerOptions Json = new(System.Text.Json.JsonSerializerDefaults.Web);
+
+    public (double x, double y, double accuracy) Smooth(Rfid.Domain.Entities.Item item, Guid zoneId, double x, double y, double accuracy, DateTime at)
+    {
+        KalmanTrack.State? state = null;
+        try { state = string.IsNullOrEmpty(item.PositionTrack) ? null : System.Text.Json.JsonSerializer.Deserialize<KalmanTrack.State>(item.PositionTrack, Json); } catch { /* corrupt state → restart track */ }
+        KalmanTrack track; (double x, double y, double accuracy) result;
+        if (state != null && state.Zone == zoneId && at - state.At < ResetAfter) { track = KalmanTrack.FromState(state); result = track.Update(x, y, accuracy, at); }
+        else { track = new KalmanTrack(x, y, at); result = (Math.Round(x, 2), Math.Round(y, 2), Math.Round(accuracy, 2)); }
+        item.PositionTrack = System.Text.Json.JsonSerializer.Serialize(track.ToState(zoneId), Json);
+        return result;
     }
 }

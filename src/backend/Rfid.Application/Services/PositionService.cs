@@ -13,6 +13,8 @@ public class PositionService
     public PositionService(IAppDb db, IPositionSmoother? smoother = null) { _db = db; _smoother = smoother; }
 
     public record Sighting(Antenna Antenna, double? Rssi, double? RangeM);
+    public double MinMoveM { get; set; } = 0.5;
+    public TimeSpan StationarySampleEvery { get; set; } = TimeSpan.FromSeconds(30);
 
     public Estimate? Update(Item item, IEnumerable<(Antenna antenna, double rssi)> sightings, DateTime at)
         => Update(item, sightings.Select(s => new Sighting(s.antenna, s.rssi, null)), at);
@@ -36,7 +38,10 @@ public class PositionService
         }).ToList();
         var est = Trilateration.Estimate(anchors, Bounds(zone.First().Antenna.Location));
         if (est == null) return null;
-        var (x, y, acc) = _smoother?.Smooth(item.Id, zone.Key, est.X, est.Y, est.AccuracyM, at) ?? (est.X, est.Y, est.AccuracyM);
+        var (x, y, acc) = _smoother?.Smooth(item, zone.Key, est.X, est.Y, est.AccuracyM, at) ?? (est.X, est.Y, est.AccuracyM);
+        // History sample when the item moved noticeably, changed zone, or the last sample is stale (keeps the table small while stationary).
+        var moved = item.PositionX == null || item.PositionLocationId != zone.Key || Math.Abs(item.PositionX.Value - x) + Math.Abs((item.PositionY ?? 0) - y) > MinMoveM || item.PositionAt == null || at - item.PositionAt.Value > StationarySampleEvery;
+        if (moved) _db.PositionFixes.Add(new PositionFix { TenantId = item.TenantId, ItemId = item.Id, LocationId = zone.Key, X = x, Y = y, AccuracyM = acc, At = at });
         item.PositionX = x; item.PositionY = y; item.PositionLocationId = zone.Key; item.PositionAt = at; item.PositionAccuracyM = acc;
         return est with { X = x, Y = y, AccuracyM = acc };
     }
@@ -47,6 +52,46 @@ public class PositionService
         var w = loc.Attributes.TryGetValue("widthM", out var wv) && double.TryParse(wv?.ToString(), out var wd) ? wd : (double?)null;
         var h = loc.Attributes.TryGetValue("heightM", out var hv) && double.TryParse(hv?.ToString(), out var hd) ? hd : (double?)null;
         return w.HasValue && h.HasValue ? (w.Value, h.Value) : null;
+    }
+
+    public record HeatCell(int Ix, int Iy, double X, double Y, int Samples, double Seconds, int Items);
+    public record HeatMap(Guid LocationId, double CellM, double? WidthM, double? HeightM, DateTime From, DateTime To, List<HeatCell> Cells);
+
+    /// <summary>Dwell heat map: position samples bucketed into cells; seconds ≈ samples × sampling interval (capped), items = distinct items per cell.</summary>
+    public async Task<HeatMap> HeatMapAsync(Guid locationId, DateTime from, DateTime to, double cellM = 1.0, CancellationToken ct = default)
+    {
+        var loc = await _db.Locations.FindAsync(new object[] { locationId }, ct) ?? throw new NotFoundException("Location");
+        cellM = Math.Clamp(cellM, 0.25, 20);
+        var fixes = await _db.PositionFixes.Where(f => f.LocationId == locationId && f.At >= from && f.At <= to).OrderBy(f => f.ItemId).ThenBy(f => f.At).ToListAsync(ct);
+        var cells = new Dictionary<(int, int), (int samples, double seconds, HashSet<Guid> items)>();
+        var cap = StationarySampleEvery.TotalSeconds * 2;
+        for (var i = 0; i < fixes.Count; i++)
+        {
+            var f = fixes[i];
+            var next = i + 1 < fixes.Count && fixes[i + 1].ItemId == f.ItemId ? fixes[i + 1].At : (DateTime?)null;
+            // Dwell = time until the item's next sample (it stayed here meanwhile), capped so gaps without coverage don't inflate a cell.
+            var dt = next.HasValue ? Math.Min((next.Value - f.At).TotalSeconds, cap) : Math.Min(Math.Max(0, (to - f.At).TotalSeconds), StationarySampleEvery.TotalSeconds);
+            var key = ((int)Math.Floor(f.X / cellM), (int)Math.Floor(f.Y / cellM));
+            if (!cells.TryGetValue(key, out var c)) c = (0, 0, new HashSet<Guid>());
+            c.samples++; c.seconds += dt; c.items.Add(f.ItemId); cells[key] = c;
+        }
+        var b = Bounds(loc);
+        return new HeatMap(locationId, cellM, b?.w, b?.h, from, to, cells.Select(kv => new HeatCell(kv.Key.Item1, kv.Key.Item2, Math.Round(kv.Key.Item1 * cellM, 2), Math.Round(kv.Key.Item2 * cellM, 2), kv.Value.samples, Math.Round(kv.Value.seconds), kv.Value.items.Count)).OrderByDescending(c => c.Seconds).ToList());
+    }
+
+    public record PathPoint(double X, double Y, double? AccuracyM, DateTime At, Guid LocationId);
+
+    /// <summary>An item's position history (path replay), oldest first.</summary>
+    public async Task<List<PathPoint>> HistoryAsync(Guid itemId, DateTime from, DateTime to, int take = 5000, CancellationToken ct = default)
+        => await _db.PositionFixes.Where(f => f.ItemId == itemId && f.At >= from && f.At <= to).OrderBy(f => f.At).Take(Math.Clamp(take, 1, 50000)).Select(f => new PathPoint(f.X, f.Y, f.AccuracyM, f.At, f.LocationId)).ToListAsync(ct);
+
+    /// <summary>Deletes samples older than the retention window; returns rows removed.</summary>
+    public async Task<int> PruneAsync(TimeSpan retention, CancellationToken ct = default)
+    {
+        var cutoff = DateTime.UtcNow - retention;
+        var old = await _db.PositionFixes.Where(f => f.At < cutoff).Take(5000).ToListAsync(ct);
+        if (old.Count == 0) return 0;
+        _db.PositionFixes.RemoveRange(old); await _db.SaveChangesAsync(ct); return old.Count;
     }
 
     public record FloorPlan(Guid LocationId, string Location, double? WidthM, double? HeightM, List<AnchorDto> Anchors, List<PositionDto> Items);

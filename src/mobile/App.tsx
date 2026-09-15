@@ -14,6 +14,7 @@ import StocktakeScreen from './src/screens/StocktakeScreen';
 import OperationScreen from './src/screens/OperationScreen';
 import CommissionScreen from './src/screens/CommissionScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import FloorPlanScreen from './src/screens/FloorPlanScreen';
 import { C } from './src/ui';
 
 export type RootStackParamList = {
@@ -24,6 +25,7 @@ export type RootStackParamList = {
   Stocktake: undefined;
   Operation: { epcs?: string[]; type?: string } | undefined;
   Commission: { epc?: string } | undefined;
+  FloorPlan: { locationId?: string; itemId?: string } | undefined;
   Settings: undefined;
 };
 
@@ -51,6 +53,7 @@ export default function App() {
                 <Stack.Screen name="Stocktake" component={StocktakeScreen} />
                 <Stack.Screen name="Operation" component={OperationScreen} options={{ title: 'Operation' }} />
                 <Stack.Screen name="Commission" component={CommissionScreen} options={{ title: 'Commission tags' }} />
+                <Stack.Screen name="FloorPlan" component={FloorPlanScreen} options={{ title: 'Floor plan' }} />
                 <Stack.Screen name="Settings" component={SettingsScreen} />
               </Stack.Navigator>
             </NavigationContainer>

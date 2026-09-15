@@ -184,7 +184,8 @@ public class ScheduleIntegrationTemplateTests
         var asset = await h.InstallTypeAsync("asset-management", "ASSET");
         var store = h.Loc(LocationKind.Room, "Store"); h.Item(asset, "A-1", store); h.Item(asset, "A-2", store);
         var now = DateTime.UtcNow;
-        h.Db.StocktakeSchedules.Add(new StocktakeSchedule { TenantId = h.Ctx.TenantId, Name = "Weekly store", LocationId = store.Id, IntervalDays = 7, TimeOfDay = TimeSpan.FromHours(6), NextRunAt = now.AddMinutes(-1), AutoReconcileHours = 4 });
+        var tod = now.AddHours(-6).TimeOfDay; // the next daily slot is ≥ 18 h away, so the auto-reconcile check at +5 h cannot open a second stocktake
+        h.Db.StocktakeSchedules.Add(new StocktakeSchedule { TenantId = h.Ctx.TenantId, Name = "Weekly store", LocationId = store.Id, IntervalDays = 7, TimeOfDay = tod, NextRunAt = now.AddMinutes(-1), AutoReconcileHours = 4 });
         await h.SaveAsync();
         var svc = new StocktakeScheduleService(h.Db, h.Ctx, h.Stocktakes);
         Assert.Equal(1, await svc.RunDueAsync(now));

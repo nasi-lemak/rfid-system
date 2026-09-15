@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Rfid.Api.Auth;
+using Rfid.Application.Cluster;
 using Rfid.Application.Contracts;
 using Rfid.Application.Llrp;
 using Rfid.Application.Services;
@@ -56,7 +57,16 @@ public class LlrpReaderService : BackgroundService
             {
                 List<Device> devices;
                 using (var s = _scopes.CreateScope()) devices = await s.ServiceProvider.GetRequiredService<AppDbContext>().Devices.IgnoreQueryFilters().Where(d => d.Kind != DeviceKind.Handheld && d.Kind != DeviceKind.Printer).ToListAsync(ct);
-                var wanted = devices.Select(d => (d, ep: Endpoint(d))).Where(x => x.ep != null).ToList();
+                var refresh = _cfg.GetValue("Llrp:RefreshSeconds", 60);
+                var candidates = devices.Select(d => (d, ep: Endpoint(d))).Where(x => x.ep != null).ToList();
+                // In a cluster every reader is driven by exactly one node: the one holding its "llrp:{deviceId}" lease.
+                var wanted = new List<(Device d, (string host, int port)? ep)>();
+                using (var ls = _scopes.CreateScope())
+                {
+                    var leases = ls.ServiceProvider.GetRequiredService<LeaseService>();
+                    foreach (var c in candidates)
+                        if (await leases.TryAcquireAsync("llrp:" + c.d.Id, ClusterNode.Id, TimeSpan.FromSeconds(Math.Max(90, refresh * 1.5)), ct: ct)) wanted.Add(c);
+                }
                 foreach (var (d, ep) in wanted)
                 {
                     var opts = OptionsFor(d);
@@ -77,6 +87,12 @@ public class LlrpReaderService : BackgroundService
             await Task.Delay(TimeSpan.FromSeconds(_cfg.GetValue("Llrp:RefreshSeconds", 60)), ct);
         }
         foreach (var c in _clients.Values) await c.client.StopAsync();
+        try
+        {
+            using var ls = _scopes.CreateScope(); var leases = ls.ServiceProvider.GetRequiredService<LeaseService>();
+            foreach (var id in _clients.Keys) await leases.ReleaseAsync("llrp:" + id, ClusterNode.Id);
+        }
+        catch (Exception ex) { _log.LogDebug(ex, "LLRP lease release failed"); }
     }
 
     private async Task IngestAsync(Guid tenantId, Guid deviceId, string deviceName, IReadOnlyList<LlrpTag> tags)

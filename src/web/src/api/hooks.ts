@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { del, get, post, put } from './client';
-import type { Alert, Dashboard, SeedResult, FloorPlanSummary, FloorPlan, PrintJob, LlrpStatus, ZoneOccupancy, MusterReport, TimingRow, ReportDef, ReportResult, IntegrationEndpoint, StocktakeSchedule, Device, Item, ItemEvent, ItemType, Location, Lookups, OperationRequest, OperationResult, OperationSummary, Paged, Party, Rule, StocktakeDetail, StocktakeListRow, StocktakeSummary, Tag, Template } from './types';
+import type { Alert, Dashboard, SeedResult, FloorPlanSummary, FloorPlan, HeatMap, PathHistory, HistoryItem, ClusterStatus, UserSites, PrintJob, LlrpStatus, ZoneOccupancy, MusterReport, TimingRow, ReportDef, ReportResult, IntegrationEndpoint, StocktakeSchedule, Device, Item, ItemEvent, ItemType, Location, Lookups, OperationRequest, OperationResult, OperationSummary, Paged, Party, Rule, StocktakeDetail, StocktakeListRow, StocktakeSummary, Tag, Template } from './types';
 
 export const useLookups = () => useQuery({ queryKey: ['lookups'], queryFn: () => get<Lookups>('/api/lookups'), staleTime: Infinity });
 export const useDashboard = () => useQuery({ queryKey: ['dashboard'], queryFn: () => get<Dashboard>('/api/dashboard'), refetchInterval: 15000 });
@@ -72,6 +72,11 @@ export const useIntegrations = () => useQuery({ queryKey: ['integrations'], quer
 export const useSchedules = () => useQuery({ queryKey: ['schedules'], queryFn: () => get<StocktakeSchedule[]>('/api/stocktake-schedules') });
 
 export const useFloorPlans = () => useQuery({ queryKey: ['floor-plans'], queryFn: () => get<FloorPlanSummary[]>('/api/positions/floor-plans') });
+export const useHeatMap = (locationId?: string, hours = 24, cellM = 1, enabled = true) => useQuery({ queryKey: ['heatmap', locationId, hours, cellM], queryFn: () => get<HeatMap>('/api/positions/heatmap', { locationId, from: new Date(Date.now() - hours * 3600e3).toISOString(), cellM }), enabled: !!locationId && enabled, refetchInterval: 15000 });
+export const useHistoryItems = (locationId?: string, hours = 24) => useQuery({ queryKey: ['history-items', locationId, hours], queryFn: () => get<HistoryItem[]>('/api/positions/history/items', { locationId, from: new Date(Date.now() - hours * 3600e3).toISOString() }), enabled: !!locationId });
+export const usePathHistory = (itemId?: string, hours = 24) => useQuery({ queryKey: ['path', itemId, hours], queryFn: () => get<PathHistory>('/api/positions/history', { itemId, from: new Date(Date.now() - hours * 3600e3).toISOString() }), enabled: !!itemId });
+export const useCluster = () => useQuery({ queryKey: ['cluster'], queryFn: () => get<ClusterStatus>('/api/cluster'), refetchInterval: 5000 });
+export const useUserSites = (userId?: string) => useQuery({ queryKey: ['user-sites', userId], queryFn: () => get<UserSites>(`/api/users/${userId}/sites`), enabled: !!userId });
 export const useFloorPlan = (id?: string) => useQuery({ queryKey: ['floor-plan', id], queryFn: () => get<FloorPlan>(`/api/positions/floor-plans/${id}`), enabled: !!id, refetchInterval: 4000 });
 
 export const usePrintJobs = (params: Record<string, unknown>) => useQuery({ queryKey: ['print-jobs', params], queryFn: () => get<PrintJob[]>('/api/labels/jobs', params), refetchInterval: 5000 });

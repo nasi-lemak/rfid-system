@@ -11,14 +11,8 @@ public class JwtService
     private readonly IConfiguration _cfg;
     public JwtService(IConfiguration cfg) => _cfg = cfg;
 
-    public string IssueForUser(User user) => Issue(new[]
-    {
-        new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-        new Claim(ClaimTypes.Name, user.DisplayName),
-        new Claim(ClaimTypes.Email, user.Email),
-        new Claim(ClaimTypes.Role, user.Role.ToString()),
-        new Claim("tenant", user.TenantId.ToString()),
-    }, TimeSpan.FromMinutes(_cfg.GetValue("Jwt:ExpiresMinutes", 720)));
+    public string IssueForUser(User user, IEnumerable<UserSiteAccess>? sites = null) =>
+        Issue(PlatformClaims.ForUser(user, sites ?? Array.Empty<UserSiteAccess>()), TimeSpan.FromMinutes(_cfg.GetValue("Jwt:ExpiresMinutes", 720)));
 
     public string IssueForDevice(Device device) => Issue(new[]
     {

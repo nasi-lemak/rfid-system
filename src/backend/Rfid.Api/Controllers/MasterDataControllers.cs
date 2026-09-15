@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Rfid.Application.Contracts;
+using Rfid.Application.Security;
 using Rfid.Application.Services;
 using Rfid.Domain;
 using Rfid.Domain.Entities;
@@ -56,13 +57,13 @@ public class ItemTypesController : ControllerBase
 [ApiController, Route("api/locations"), Authorize]
 public class LocationsController : ControllerBase
 {
-    private readonly AppDbContext _db; private readonly ICurrentContext _ctx;
-    public LocationsController(AppDbContext db, ICurrentContext ctx) { _db = db; _ctx = ctx; }
+    private readonly AppDbContext _db; private readonly ICurrentContext _ctx; private readonly ISiteAccess _sites;
+    public LocationsController(AppDbContext db, ICurrentContext ctx, ISiteAccess sites) { _db = db; _ctx = ctx; _sites = sites; }
 
     [HttpGet]
     public async Task<IActionResult> List(LocationKind? kind = null)
     {
-        var q = _db.Locations.AsQueryable();
+        var q = SiteAccess.Filter(_db.Locations.AsQueryable(), await _sites.AllowedPathsAsync());
         if (kind.HasValue) q = q.Where(l => l.Kind == kind);
         var locs = await q.OrderBy(l => l.Path).ToListAsync();
         var counts = await _db.Items.Where(i => i.CurrentLocationId != null && i.Status != ItemStatus.Disposed).GroupBy(i => i.CurrentLocationId).Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key!.Value, x => x.Count);
@@ -194,13 +195,19 @@ public class TagsController : ControllerBase
 [ApiController, Route("api/devices"), Authorize]
 public class DevicesController : ControllerBase
 {
-    private readonly AppDbContext _db; private readonly ICurrentContext _ctx;
-    public DevicesController(AppDbContext db, ICurrentContext ctx) { _db = db; _ctx = ctx; }
+    private readonly AppDbContext _db; private readonly ICurrentContext _ctx; private readonly ISiteAccess _sites;
+    public DevicesController(AppDbContext db, ICurrentContext ctx, ISiteAccess sites) { _db = db; _ctx = ctx; _sites = sites; }
 
     [HttpGet]
     public async Task<IActionResult> List()
     {
-        var devices = await _db.Devices.Include(d => d.Antennas).ThenInclude(a => a.Location).OrderBy(d => d.Name).ToListAsync();
+        var q = _db.Devices.Include(d => d.Antennas).ThenInclude(a => a.Location).AsQueryable();
+        if (await _sites.AllowedPathsAsync() is { } paths)
+        {
+            var siteIds = await SiteAccess.Filter(_db.Locations, paths).Select(l => l.Id).ToListAsync();
+            q = q.Where(d => (d.SiteLocationId != null && siteIds.Contains(d.SiteLocationId.Value)) || d.Antennas.Any(a => a.LocationId != null && siteIds.Contains(a.LocationId.Value)));
+        }
+        var devices = await q.OrderBy(d => d.Name).ToListAsync();
         return Ok(devices.Select(Map));
     }
 
@@ -263,7 +270,7 @@ public class UsersController : ControllerBase
     public UsersController(AppDbContext db, ICurrentContext ctx) { _db = db; _ctx = ctx; }
 
     [HttpGet]
-    public async Task<IActionResult> List() => Ok(await _db.Users.OrderBy(u => u.Email).Select(u => new { u.Id, u.Email, u.DisplayName, u.Role, u.IsActive, u.CreatedAt }).ToListAsync());
+    public async Task<IActionResult> List() => Ok(await _db.Users.OrderBy(u => u.Email).Select(u => new { u.Id, u.Email, u.DisplayName, u.Role, u.IsActive, u.CreatedAt, u.RestrictToSites, u.ExternalIssuer, u.LastLoginAt, SiteCount = _db.UserSiteAccess.Count(s => s.UserId == u.Id) }).ToListAsync());
 
     public record UserWrite(string Email, string DisplayName, UserRole Role, string? Password, bool IsActive = true);
 

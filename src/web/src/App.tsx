@@ -25,9 +25,12 @@ import Integrations from './pages/Integrations';
 import LabelDesigner from './pages/LabelDesigner';
 import Import from './pages/Import';
 import PrintQueue from './pages/PrintQueue';
+import SsoCallback from './pages/SsoCallback';
+import Cluster from './pages/Cluster';
 
 export default function App() {
   const { user } = useAuth();
+  if (!user && window.location.pathname === '/auth/callback') return <SsoCallback />;
   if (!user) return <Login />;
   return (
     <Routes>
@@ -55,6 +58,8 @@ export default function App() {
         <Route path="labels" element={<LabelDesigner />} />
         <Route path="print-queue" element={<PrintQueue />} />
         <Route path="import" element={<Import />} />
+        <Route path="cluster" element={<Cluster />} />
+        <Route path="auth/callback" element={<Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

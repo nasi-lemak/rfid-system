@@ -156,8 +156,39 @@ Background jobs run per tenant inside an ambient scope (`AmbientContext`), so th
 | `ImportService` | CSV/JSON asset-master upsert with dry run and reconciliation |
 | `PrintQueueService` + `PrintQueueWorkerService`, `PrintJob` | Durable print jobs, retries, reprint audit, label stock alerts |
 
+### v1.4 additions
+
+| Component | Role |
+|---|---|
+| `LeaseService`, `WorkerLease`, `ClusterNode` | DB leases with an optimistic-concurrency token; `TenantLoopService` jobs, `MqttIngestService` and per-reader `LlrpReaderService` connections run only on the lease holder |
+| `PersistentPositionSmoother`, `Item.PositionTrack` | Kalman state serialised on the item so any node continues the track |
+| `PositionFix`, `PositionService.HeatMapAsync/HistoryAsync/PruneAsync` | Movement-sampled position history → heat map, path replay, retention |
+| SignalR Redis backplane | `Redis:ConnectionString` → `AddStackExchangeRedis`; live updates fan out to every node |
+| `SsoOptions`, `SsoUserMapper`, `OidcClaimsTransformation` | Second JWT bearer scheme ("oidc"); external identity → platform user (JIT provisioning, group→role map); claims rewritten to the platform shape |
+| `UserSiteAccess`, `ISiteAccess`/`SiteAccess`, `PlatformClaims` | Site claims in the JWT; per-request scope that filters queries and enforces a minimum role per location |
+| `ClusterController`, `UserSitesController`, positions history endpoints | Admin visibility of nodes/leases; site-access editor; heat map/replay APIs |
+
+### Scaling out
+
+```
+            ┌────────── clients (web / handheld / readers) ──────────┐
+            │                  load balancer                         │
+     ┌──────┴──────┐    ┌─────────────┐    ┌─────────────┐
+     │  api node A │    │  api node B │    │  api node C │   ← identical containers
+     └──────┬──────┘    └──────┬──────┘    └──────┬──────┘
+            │   leases: job:presencesweeper → A, job:printqueueworker → B, llrp:<reader1> → C …
+            └──────────────┬──────────────┴──────────────┘
+                     PostgreSQL (state + leases)        Redis (SignalR backplane, optional)
+```
+
+Leases are renewed every job interval with a TTL of 3× the interval (readers: 90 s); a node that
+stops renewing loses its leases and another node takes over. Nothing else is node-local: JWTs are
+symmetric-key, position tracks and the print queue are in the database, and SignalR groups are
+shared through Redis when configured.
+
 ## 7. Roadmap
-- Multi-node deployment: distributed LLRP/print workers and shared position tracks (Redis).
-- RTLS heat maps and path replay from position history.
-- SSO (OIDC) and per-site role-based access.
-- Offline floor plans on the handheld.
+- Reader firmware management and health SLAs.
+- Geofenced GPS assets (vehicles, containers) with map tiles.
+- Configurable dashboards and KPI widgets.
+- Rule actions (e-mail/SMS/Teams) and escalation policies.
+- Data warehouse export (Parquet) and long-term analytics.

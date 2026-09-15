@@ -24,6 +24,12 @@ public class User : TenantEntity
     public string DisplayName { get; set; } = "";
     public UserRole Role { get; set; } = UserRole.Viewer;
     public bool IsActive { get; set; } = true;
+    /// <summary>When true the user only sees and acts within the sites listed in UserSiteAccess (site role may exceed the global role).</summary>
+    public bool RestrictToSites { get; set; }
+    /// <summary>External identity (OIDC subject) when the user signs in through SSO.</summary>
+    public string? ExternalSubject { get; set; }
+    public string? ExternalIssuer { get; set; }
+    public DateTime? LastLoginAt { get; set; }
 }
 
 public class Party : TenantEntity

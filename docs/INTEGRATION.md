@@ -158,6 +158,51 @@ Settings → **Label printer**: pick a network `Printer` device (the server rend
 module (`print(zpl)`); the app fetches the ZPL from `GET /api/labels/items/{id}`. Print buttons live on
 the Lookup screen and after a successful Commission.
 
+## Position history, heat maps & replay
+
+Every position update that moves an item by more than 0.5 m, changes zone, or is more than 30 s
+after the previous sample writes a `position_fixes` row (pruned after `Positions:RetentionDays`,
+default 30). Endpoints:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/positions/heatmap?locationId&from&to&cellM=1` | Dwell seconds per grid cell (`cells[]: ix, iy, x, y, samples, seconds, items`) |
+| `GET /api/positions/history?itemId&from&to` | Ordered fixes for one item (path replay) |
+| `GET /api/positions/history/items?locationId&from&to` | Items with recorded paths in a floor plan |
+
+## Single sign-on (OIDC)
+
+```json
+"Oidc": { "Enabled": true, "Authority": "https://login.microsoftonline.com/<tenant>/v2.0", "ClientId": "<spa-client-id>",
+          "Audience": null, "Scopes": "openid profile email", "RoleClaim": "roles",
+          "RoleMap": { "rfid-admins": "Admin", "rfid-operators": "Operator" }, "DefaultRole": "Viewer",
+          "TenantCode": "demo", "AutoProvision": true }
+```
+
+Register the web app as a public (SPA) client with redirect URI `https://<web-host>/auth/callback`.
+The API validates the provider's tokens (`Authority` discovery, audience = `Audience` or the client
+id) as a second bearer scheme; on each request the external identity is mapped to a platform user
+(matched by subject, then e-mail; provisioned when `AutoProvision` is on) and the `RoleClaim`/`groups`
+values are translated with `RoleMap` (highest wins; `DefaultRole` when nothing matches). Password
+login stays available; `GET /api/auth/config` tells clients whether SSO is on.
+
+## Per-site access
+
+`PUT /api/users/{id}/sites` `{ "restrictToSites": true, "sites": [{ "siteLocationId": "…", "role": "Operator" }] }`
+scopes a user to location subtrees. Their JWT carries `restricted=true` and one `site` claim per
+site; `ISiteAccess` filters item/location/device queries and `EnsureAsync(locationId, role)` guards
+operations and stocktakes. Locations outside every site are refused; a user's global role still
+applies to operations with no location. Device tokens are never restricted.
+
+## Multi-node operation
+
+Run several API containers behind a load balancer (`docker compose up --scale api=3`). Background
+work is coordinated with leases in `worker_leases` (`GET /api/cluster` lists them; `POST
+/api/cluster/leases/{name}/release` hands one over). Set `Redis:ConnectionString` (e.g.
+`redis:6379`) so SignalR live updates reach clients connected to any node. Handheld apps can
+pre-download master data and floor plans (Settings → *Download for offline*); GET responses are
+served from the device cache whenever the server is unreachable.
+
 ## Template customisation
 
 `GET /api/templates/export` returns the tenant's item types, lifecycles and rules as a template

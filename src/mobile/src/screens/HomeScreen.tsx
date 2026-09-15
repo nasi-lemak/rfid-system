@@ -15,6 +15,7 @@ const tiles: { to: keyof RootStackParamList; title: string; sub: string; icon: s
   { to: 'Stocktake', title: 'Stocktake', sub: 'Count a location: found / missing / unexpected', icon: '📋' },
   { to: 'Operation', title: 'Operations', sub: 'Receive · Transfer · Issue · Return · Dispatch · Stage…', icon: '🔁' },
   { to: 'Commission', title: 'Commission', sub: 'Bind / encode tags to new items', icon: '🏷️' },
+  { to: 'FloorPlan', title: 'Floor plan', sub: 'Anchors and live positions · works offline from the last sync', icon: '🗺️' },
 ];
 
 export default function HomeScreen() {

@@ -35,6 +35,9 @@ public class AppDbContext : DbContext, IAppDb
     public DbSet<StocktakeSchedule> StocktakeSchedules => Set<StocktakeSchedule>();
     public DbSet<IntegrationEndpoint> IntegrationEndpoints => Set<IntegrationEndpoint>();
     public DbSet<PrintJob> PrintJobs => Set<PrintJob>();
+    public DbSet<WorkerLease> WorkerLeases => Set<WorkerLease>();
+    public DbSet<PositionFix> PositionFixes => Set<PositionFix>();
+    public DbSet<UserSiteAccess> UserSiteAccess => Set<UserSiteAccess>();
 
     private Guid CurrentTenant => _ctx?.TenantId ?? Guid.Empty;
 
@@ -233,6 +236,27 @@ public class AppDbContext : DbContext, IAppDb
             e.Property(p => p.Reason).HasConversion<string>();
             e.HasIndex(p => new { p.TenantId, p.Status, p.NextAttemptAt });
             e.HasIndex(p => new { p.ItemId, p.RequestedAt });
+        });
+
+        b.Entity<WorkerLease>(e =>
+        {
+            e.ToTable("worker_leases");
+            e.HasIndex(l => l.Name).IsUnique();
+            e.Property(l => l.Version).IsConcurrencyToken();
+        });
+
+        b.Entity<PositionFix>(e =>
+        {
+            e.ToTable("position_fixes");
+            e.HasIndex(f => new { f.TenantId, f.LocationId, f.At });
+            e.HasIndex(f => new { f.ItemId, f.At });
+        });
+
+        b.Entity<UserSiteAccess>(e =>
+        {
+            e.ToTable("user_site_access");
+            e.Property(u => u.Role).HasConversion<string>();
+            e.HasIndex(u => new { u.UserId, u.SiteLocationId }).IsUnique();
         });
 
         b.Entity<SolutionTemplate>(e =>
