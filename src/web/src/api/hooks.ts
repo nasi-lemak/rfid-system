@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { del, get, post, put } from './client';
-import type { Alert, Dashboard, SeedResult, FloorPlanSummary, FloorPlan, HeatMap, PathHistory, HistoryItem, ClusterStatus, UserSites, PrintJob, LlrpStatus, ZoneOccupancy, MusterReport, TimingRow, ReportDef, ReportResult, IntegrationEndpoint, StocktakeSchedule, Device, Item, ItemEvent, ItemType, Location, Lookups, OperationRequest, OperationResult, OperationSummary, Paged, Party, Rule, StocktakeDetail, StocktakeListRow, StocktakeSummary, Tag, Template } from './types';
+import type { Alert, Dashboard, SeedResult, FloorPlanSummary, FloorPlan, HeatMap, PathHistory, HistoryItem, ClusterStatus, UserSites, DeviceHealthReport, FirmwareRelease, FirmwareRollout, MapData, GpsTrack, DashboardDef, WidgetResult, WidgetTypes, DashboardWidget, ChannelRow, EscalationPolicy, NotificationLogRow, TrendSeries, UtilizationRow, DwellRow, AccuracyReport, AlertResponseRow, DeviceHealthRow, WarehouseStatus, PrintJob, LlrpStatus, ZoneOccupancy, MusterReport, TimingRow, ReportDef, ReportResult, IntegrationEndpoint, StocktakeSchedule, Device, Item, ItemEvent, ItemType, Location, Lookups, OperationRequest, OperationResult, OperationSummary, Paged, Party, Rule, StocktakeDetail, StocktakeListRow, StocktakeSummary, Tag, Template } from './types';
 
 export const useLookups = () => useQuery({ queryKey: ['lookups'], queryFn: () => get<Lookups>('/api/lookups'), staleTime: Infinity });
 export const useDashboard = () => useQuery({ queryKey: ['dashboard'], queryFn: () => get<Dashboard>('/api/dashboard'), refetchInterval: 15000 });
@@ -81,3 +81,23 @@ export const useFloorPlan = (id?: string) => useQuery({ queryKey: ['floor-plan',
 
 export const usePrintJobs = (params: Record<string, unknown>) => useQuery({ queryKey: ['print-jobs', params], queryFn: () => get<PrintJob[]>('/api/labels/jobs', params), refetchInterval: 5000 });
 export const useLlrpStatus = (deviceId?: string) => useQuery({ queryKey: ['llrp', deviceId], queryFn: () => get<LlrpStatus>(`/api/devices/${deviceId}/llrp/status`), enabled: !!deviceId, refetchInterval: 5000 });
+
+// ── v1.5 ──
+export const useDeviceHealth = (days = 7) => useQuery({ queryKey: ['device-health', days], queryFn: () => get<DeviceHealthReport>('/api/devices/health', { days }), refetchInterval: 15000 });
+export const useFirmwareReleases = () => useQuery({ queryKey: ['firmware-releases'], queryFn: () => get<FirmwareRelease[]>('/api/firmware/releases') });
+export const useFirmwareRollouts = () => useQuery({ queryKey: ['firmware-rollouts'], queryFn: () => get<FirmwareRollout[]>('/api/firmware/rollouts'), refetchInterval: 10000 });
+export const useGeoMap = (hours = 168) => useQuery({ queryKey: ['geo-map', hours], queryFn: () => get<MapData>('/api/geo/map', { hours }), refetchInterval: 10000 });
+export const useGpsTrack = (itemId?: string, hours = 24) => useQuery({ queryKey: ['gps-track', itemId, hours], queryFn: () => get<GpsTrack>('/api/geo/track', { itemId, from: new Date(Date.now() - hours * 3600e3).toISOString() }), enabled: !!itemId });
+export const useDashboards = () => useQuery({ queryKey: ['dashboards'], queryFn: () => get<DashboardDef[]>('/api/dashboards') });
+export const useWidgetTypes = () => useQuery({ queryKey: ['widget-types'], queryFn: () => get<WidgetTypes>('/api/dashboards/widget-types'), staleTime: Infinity });
+export const useWidgetData = (widgets: DashboardWidget[] | undefined) => useQuery({ queryKey: ['widget-data', widgets], queryFn: () => post<WidgetResult[]>('/api/dashboards/evaluate', widgets), enabled: !!widgets && widgets.length > 0, refetchInterval: 15000 });
+export const useChannels = () => useQuery({ queryKey: ['channels'], queryFn: () => get<ChannelRow[]>('/api/notifications/channels') });
+export const usePolicies = () => useQuery({ queryKey: ['policies'], queryFn: () => get<EscalationPolicy[]>('/api/notifications/policies') });
+export const useNotificationLog = (alertId?: string) => useQuery({ queryKey: ['notification-log', alertId], queryFn: () => get<NotificationLogRow[]>('/api/notifications/log', { alertId }), refetchInterval: 15000 });
+export const useTrend = (metric: string, days: number, bucket: string) => useQuery({ queryKey: ['trend', metric, days, bucket], queryFn: () => get<TrendSeries>('/api/analytics/trend', { metric, days, bucket }) });
+export const useUtilization = (days: number) => useQuery({ queryKey: ['utilization', days], queryFn: () => get<UtilizationRow[]>('/api/analytics/utilization', { days }) });
+export const useDwell = (days: number) => useQuery({ queryKey: ['dwell', days], queryFn: () => get<DwellRow[]>('/api/analytics/dwell', { days }) });
+export const useAccuracy = (days: number) => useQuery({ queryKey: ['accuracy', days], queryFn: () => get<AccuracyReport>('/api/analytics/accuracy', { days }) });
+export const useAlertResponse = (days: number) => useQuery({ queryKey: ['alert-response', days], queryFn: () => get<AlertResponseRow[]>('/api/analytics/alert-response', { days }) });
+export const useUptime = (days: number) => useQuery({ queryKey: ['uptime', days], queryFn: () => get<DeviceHealthRow[]>('/api/analytics/uptime', { days }) });
+export const useWarehouse = () => useQuery({ queryKey: ['warehouse'], queryFn: () => get<WarehouseStatus>('/api/warehouse'), refetchInterval: 20000 });

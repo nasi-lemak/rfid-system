@@ -70,6 +70,11 @@ public class Item : TenantEntity
     public double? PositionAccuracyM { get; set; }
     /// <summary>Serialised Kalman track state so smoothing continues across API nodes and restarts.</summary>
     public string? PositionTrack { get; set; }
+    /// <summary>Last GPS position (outdoor assets: vehicles, containers, trailers).</summary>
+    public double? Latitude { get; set; }
+    public double? Longitude { get; set; }
+    public DateTime? GpsAt { get; set; }
+    public double? GpsSpeedKph { get; set; }
     public decimal? Cost { get; set; }
     public DateOnly? PurchasedAt { get; set; }
     public Dictionary<string, object?> Attributes { get; set; } = new();

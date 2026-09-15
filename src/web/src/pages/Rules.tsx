@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
-import { useLookups, useRemove, useRules, useSave } from '../api/hooks';
+import { useChannels, useLookups, usePolicies, useRemove, useRules, useSave } from '../api/hooks';
+import { useAuth } from '../auth';
 import type { Rule, RuleCondition } from '../api/types';
 import { Badge, ErrorBox, Modal, toneForSeverity } from '../components/ui';
 
@@ -8,6 +9,8 @@ const blank: Partial<Rule> = { name: '', enabled: true, trigger: 'Moved', condit
 export default function Rules() {
   const { data } = useRules();
   const lookups = useLookups();
+  const { user } = useAuth(); const isAdmin = user?.role === 'Admin';
+  const channels = useChannels(); const policies = usePolicies();
   const save = useSave<Rule>('/api/rules', ['rules']);
   const remove = useRemove('/api/rules', ['rules']);
   const [edit, setEdit] = useState<Partial<Rule> | null>(null);
@@ -25,7 +28,7 @@ export default function Rules() {
           <tbody>{data?.map((r) => <tr key={r.id}>
             <td><b>{r.name}</b>{r.vertical && <div className="muted small">{r.vertical}</div>}</td><td><Badge>{r.trigger}</Badge></td>
             <td className="small mono">{r.conditions.map((c, i) => <div key={i}>{c.field} {c.op} {JSON.stringify(c.value)}</div>)}{r.conditions.length === 0 && <span className="muted">always</span>}</td>
-            <td>{r.action}{r.action === 'CreateAlert' && r.params?.message ? <div className="muted small">{String(r.params.message)}</div> : null}{r.action === 'SetState' ? <div className="muted small">→ {String(r.params?.state)}</div> : null}</td>
+            <td>{r.action}{(r.notifyChannelIds?.length ?? 0) > 0 && <Badge tone="info">{r.notifyChannelIds!.length} channel(s)</Badge>}{r.action === 'CreateAlert' && r.params?.message ? <div className="muted small">{String(r.params.message)}</div> : null}{r.action === 'SetState' ? <div className="muted small">→ {String(r.params?.state)}</div> : null}</td>
             <td><Badge tone={toneForSeverity(r.severity)}>{r.severity}</Badge></td><td>{r.enabled ? '✓' : '—'}</td>
             <td className="right"><button className="sm" onClick={() => setEdit(r)}>Edit</button> <button className="sm danger" onClick={() => confirm('Delete rule?') && remove.mutate(r.id)}>Delete</button></td>
           </tr>)}</tbody>
@@ -41,6 +44,10 @@ export default function Rules() {
             {edit.action === 'CreateAlert' && <label style={{ gridColumn: '1 / -1' }}>Message template<input value={String(edit.params?.message ?? '')} onChange={(e) => setEdit({ ...edit, params: { ...edit.params, message: e.target.value } })} placeholder="{item.name} left {fromLocation.name} while {item.state}" /></label>}
             {edit.action === 'SetState' && <label>Set state to<input value={String(edit.params?.state ?? '')} onChange={(e) => setEdit({ ...edit, params: { ...edit.params, state: e.target.value } })} /></label>}
             {edit.action === 'Webhook' && <label style={{ gridColumn: '1 / -1' }}>Webhook URL<input value={String(edit.params?.url ?? '')} onChange={(e) => setEdit({ ...edit, params: { ...edit.params, url: e.target.value } })} /></label>}
+            {(edit.action === 'CreateAlert' || edit.action === 'Notify') && isAdmin && <>
+              <div><span className="muted small">Notify channels immediately</span><div className="row" style={{ marginTop: 4 }}>{channels.data?.map((c) => <label key={c.channel.id} className="row" style={{ gap: 4 }}><input type="checkbox" style={{ width: 'auto' }} checked={(edit.notifyChannelIds ?? []).includes(c.channel.id)} onChange={(e) => setEdit({ ...edit, notifyChannelIds: e.target.checked ? [...(edit.notifyChannelIds ?? []), c.channel.id] : (edit.notifyChannelIds ?? []).filter((x) => x !== c.channel.id) })} />{c.channel.name}</label>)}{channels.data?.length === 0 && <span className="muted small">No channels yet (Notifications page)</span>}</div></div>
+              <label>Escalation policy<select value={edit.escalationPolicyId ?? ''} onChange={(e) => setEdit({ ...edit, escalationPolicyId: e.target.value || null })}><option value="">— default policy —</option>{policies.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+            </>}
           </div>
           <div><h3>Conditions (all must match)</h3>
             {conds.map((c, i) => <div className="row" key={i} style={{ marginBottom: 6 }}>

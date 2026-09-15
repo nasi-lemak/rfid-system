@@ -213,7 +213,7 @@ public class DevicesController : ControllerBase
 
     private static object Map(Device d) => new
     {
-        d.Id, d.Name, d.Kind, d.SerialNumber, d.Model, d.SiteLocationId, d.LastSeenAt, d.Config, HasToken = d.TokenHash != null,
+        d.Id, d.Name, d.Kind, d.SerialNumber, d.Model, d.SiteLocationId, d.LastSeenAt, d.Config, HasToken = d.TokenHash != null, d.Health, d.HealthChangedAt, d.LastHeartbeatAt, d.FirmwareVersion, d.HeartbeatSlaMinutes, d.TrackedItemId,
         Antennas = d.Antennas.OrderBy(a => a.Port).Select(a => new { a.Id, a.Port, a.LocationId, LocationName = a.Location?.Name, a.Direction, a.PowerDbm, a.X, a.Y, a.RssiAt1m, a.PathLossExponent }),
         Llrp = Rfid.Api.Background.LlrpReaderService.Endpoint(d) is { } ep ? new { ep.host, ep.port } : null,
     };

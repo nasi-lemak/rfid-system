@@ -38,6 +38,17 @@ public class AppDbContext : DbContext, IAppDb
     public DbSet<WorkerLease> WorkerLeases => Set<WorkerLease>();
     public DbSet<PositionFix> PositionFixes => Set<PositionFix>();
     public DbSet<UserSiteAccess> UserSiteAccess => Set<UserSiteAccess>();
+    public DbSet<DeviceHeartbeat> DeviceHeartbeats => Set<DeviceHeartbeat>();
+    public DbSet<FirmwareRelease> FirmwareReleases => Set<FirmwareRelease>();
+    public DbSet<FirmwareRollout> FirmwareRollouts => Set<FirmwareRollout>();
+    public DbSet<GeoFence> GeoFences => Set<GeoFence>();
+    public DbSet<GpsFix> GpsFixes => Set<GpsFix>();
+    public DbSet<GeoFenceState> GeoFenceStates => Set<GeoFenceState>();
+    public DbSet<Dashboard> Dashboards => Set<Dashboard>();
+    public DbSet<NotificationChannel> NotificationChannels => Set<NotificationChannel>();
+    public DbSet<EscalationPolicy> EscalationPolicies => Set<EscalationPolicy>();
+    public DbSet<NotificationLog> NotificationLogs => Set<NotificationLog>();
+    public DbSet<WarehouseExportRun> WarehouseExportRuns => Set<WarehouseExportRun>();
 
     private Guid CurrentTenant => _ctx?.TenantId ?? Guid.Empty;
 
@@ -125,6 +136,7 @@ public class AppDbContext : DbContext, IAppDb
         {
             e.ToTable("devices");
             e.Property(d => d.Kind).HasConversion<string>();
+            e.Property(d => d.Health).HasConversion<string>();
             e.Property(d => d.Config).HasColumnType(isNpgsql ? "jsonb" : "text").HasConversion(JsonConv<Dictionary<string, object?>>(json), JsonComparer<Dictionary<string, object?>>());
             e.HasMany(d => d.Antennas).WithOne(a => a.Device).HasForeignKey(a => a.DeviceId).OnDelete(DeleteBehavior.Cascade);
         });
@@ -194,6 +206,7 @@ public class AppDbContext : DbContext, IAppDb
             e.Property(r => r.Action).HasConversion<string>();
             e.Property(r => r.Severity).HasConversion<string>();
             e.Property(r => r.Conditions).HasColumnType(isNpgsql ? "jsonb" : "text").HasConversion(JsonConv<List<RuleCondition>>(json), JsonComparer<List<RuleCondition>>());
+            e.Property(r => r.NotifyChannelIds).HasColumnType(isNpgsql ? "jsonb" : "text").HasConversion(JsonConv<List<Guid>>(json), JsonComparer<List<Guid>>());
             e.Property(r => r.Params).HasColumnType(isNpgsql ? "jsonb" : "text").HasConversion(JsonConv<Dictionary<string, object?>>(json), JsonComparer<Dictionary<string, object?>>());
         });
 
@@ -258,6 +271,33 @@ public class AppDbContext : DbContext, IAppDb
             e.Property(u => u.Role).HasConversion<string>();
             e.HasIndex(u => new { u.UserId, u.SiteLocationId }).IsUnique();
         });
+
+        b.Entity<DeviceHeartbeat>(e => { e.ToTable("device_heartbeats"); e.HasIndex(h => new { h.DeviceId, h.At }); e.Property(h => h.Metrics).HasColumnType(isNpgsql ? "jsonb" : "text").HasConversion(JsonConv<Dictionary<string, object?>>(json), JsonComparer<Dictionary<string, object?>>()); });
+        b.Entity<FirmwareRelease>(e => { e.ToTable("firmware_releases"); e.HasIndex(f => new { f.TenantId, f.Vendor, f.Model, f.Version }).IsUnique(); });
+        b.Entity<FirmwareRollout>(e => { e.ToTable("firmware_rollouts"); e.Property(r => r.Status).HasConversion<string>(); e.HasIndex(r => new { r.DeviceId, r.Status }); });
+        b.Entity<GeoFence>(e =>
+        {
+            e.ToTable("geo_fences");
+            e.Property(g => g.Kind).HasConversion<string>(); e.Property(g => g.Trigger).HasConversion<string>(); e.Property(g => g.Severity).HasConversion<string>();
+            e.Property(g => g.Points).HasColumnType(isNpgsql ? "jsonb" : "text").HasConversion(JsonConv<List<GeoPoint>>(json), JsonComparer<List<GeoPoint>>());
+        });
+        b.Entity<GpsFix>(e => { e.ToTable("gps_fixes"); e.HasIndex(f => new { f.ItemId, f.At }); e.HasIndex(f => new { f.TenantId, f.At }); });
+        b.Entity<GeoFenceState>(e => { e.ToTable("geo_fence_states"); e.HasIndex(s => new { s.FenceId, s.ItemId }).IsUnique(); });
+        b.Entity<Dashboard>(e => { e.ToTable("dashboards"); e.Property(d => d.Widgets).HasColumnType(isNpgsql ? "jsonb" : "text").HasConversion(JsonConv<List<DashboardWidget>>(json), JsonComparer<List<DashboardWidget>>()); });
+        b.Entity<NotificationChannel>(e =>
+        {
+            e.ToTable("notification_channels");
+            e.Property(c => c.Kind).HasConversion<string>(); e.Property(c => c.MinSeverity).HasConversion<string>();
+            e.Property(c => c.Config).HasColumnType(isNpgsql ? "jsonb" : "text").HasConversion(JsonConv<Dictionary<string, object?>>(json), JsonComparer<Dictionary<string, object?>>());
+        });
+        b.Entity<EscalationPolicy>(e =>
+        {
+            e.ToTable("escalation_policies");
+            e.Property(p => p.MinSeverity).HasConversion<string>();
+            e.Property(p => p.Steps).HasColumnType(isNpgsql ? "jsonb" : "text").HasConversion(JsonConv<List<EscalationStep>>(json), JsonComparer<List<EscalationStep>>());
+        });
+        b.Entity<NotificationLog>(e => { e.ToTable("notification_logs"); e.Property(l => l.Status).HasConversion<string>(); e.HasIndex(l => new { l.TenantId, l.SentAt }); e.HasIndex(l => l.AlertId); });
+        b.Entity<WarehouseExportRun>(e => { e.ToTable("warehouse_export_runs"); e.HasIndex(r => new { r.TenantId, r.Dataset, r.To }); });
 
         b.Entity<SolutionTemplate>(e =>
         {

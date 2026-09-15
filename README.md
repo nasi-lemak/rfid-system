@@ -150,8 +150,30 @@ See [`docs/INTEGRATION.md`](docs/INTEGRATION.md).
   offline*) and the new **Floor plan** screen (SVG) shows anchors and positions, highlighting the item
   you looked up, even without coverage.
 
+## v1.5
+
+- **Reader health SLAs & firmware** — heartbeats (`POST /api/devices/{id}/heartbeat`, recorded
+  automatically for LLRP readers) drive Online / Degraded / Offline per device SLA, with critical
+  alerts on outage and uptime %. Firmware releases per vendor/model roll out to devices, which poll
+  `GET /api/devices/{id}/firmware/pending` and report progress.
+- **Geofenced GPS assets** — `POST /api/ingest/gps` from telematics units, GPS trackers or the
+  handheld; circle/polygon fences raise enter/exit/dwell alerts, fire rules
+  (`GeofenceEntered`/`GeofenceExited`) and move items to a linked location. Map page with
+  OpenStreetMap tiles (`VITE_MAP_TILES`), fence drawing and track replay.
+- **Configurable dashboards** — dashboards are stored widget lists (stat, breakdown, trend,
+  presence, devices, stocktakes, list, fences, text) evaluated server-side; shared or private, with
+  an in-page editor.
+- **Notification channels & escalation** — e-mail (SMTP), SMS (Twilio-compatible), Microsoft Teams,
+  Slack and webhooks; rules notify channels directly, catch-all channels take every alert above a
+  severity, and escalation policies re-notify on a schedule while alerts stay unacknowledged.
+  Every delivery is logged.
+- **Warehouse export & analytics** — datasets (items, events, reads, alerts, operations, position
+  and GPS fixes, presence sessions, stocktakes, heartbeats) export as Parquet/CSV to a
+  day-partitioned landing zone, incrementally on a schedule or on demand; Analytics page with
+  activity trends, utilisation, dwell, inventory accuracy, alert response and reader uptime.
+
 ## Roadmap
 
-Reader firmware management and health SLAs · geofenced GPS assets (vehicles, containers) with map
-tiles · configurable dashboards and KPI widgets · rule actions (e-mail/SMS/Teams) and escalation
-policies · data warehouse export (Parquet) and long-term analytics.
+Mobile geofencing and GPS capture in the handheld · anomaly detection on read patterns · tag
+encoding wizards for GS1 SSCC/GRAI/GIAI at scale · multi-language UI · audit log viewer and
+retention policies.

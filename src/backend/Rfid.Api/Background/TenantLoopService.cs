@@ -113,6 +113,36 @@ public class PrintQueueWorkerService : TenantLoopService
     }
 }
 
+/// <summary>Every minute: reader health SLAs, geofence dwell limits and alert escalation steps.</summary>
+public class MonitoringService : TenantLoopService
+{
+    public MonitoringService(IServiceScopeFactory s, ILogger<MonitoringService> l, IConfiguration cfg) : base(s, l, TimeSpan.FromSeconds(cfg.GetValue("Monitoring:IntervalSeconds", 60))) { }
+    protected override async Task RunForTenantAsync(IServiceProvider sp, Guid tenantId, CancellationToken ct)
+    {
+        var now = DateTime.UtcNow;
+        var changed = await sp.GetRequiredService<DeviceHealthService>().EvaluateAsync(now, ct);
+        if (changed > 0) Log.LogInformation("Device health: {Count} state change(s) for tenant {Tenant}", changed, tenantId);
+        var dwell = await sp.GetRequiredService<GeoService>().SweepDwellAsync(now, ct);
+        if (dwell > 0) Log.LogInformation("Geofence dwell: {Count} alert(s) for tenant {Tenant}", dwell, tenantId);
+        var esc = await sp.GetRequiredService<NotificationService>().EscalateDueAsync(now, ct);
+        if (esc > 0) Log.LogInformation("Escalation: {Count} notification(s) sent for tenant {Tenant}", esc, tenantId);
+    }
+}
+
+/// <summary>Incremental data-warehouse export (Warehouse:Enabled, every Warehouse:IntervalMinutes).</summary>
+public class WarehouseExportJobService : TenantLoopService
+{
+    private readonly bool _enabled;
+    public WarehouseExportJobService(IServiceScopeFactory s, ILogger<WarehouseExportJobService> l, IConfiguration cfg) : base(s, l, TimeSpan.FromMinutes(Math.Max(1, cfg.GetValue("Warehouse:IntervalMinutes", 60)))) => _enabled = cfg.GetValue("Warehouse:Enabled", false);
+    protected override async Task RunForTenantAsync(IServiceProvider sp, Guid tenantId, CancellationToken ct)
+    {
+        if (!_enabled) return;
+        var runs = await sp.GetRequiredService<WarehouseExportService>().RunIncrementalAsync(DateTime.UtcNow, null, ct);
+        foreach (var r in runs) if (r.Error != null) Log.LogWarning("Warehouse export {Dataset} failed: {Error}", r.Dataset, r.Error);
+        if (runs.Count > 0) Log.LogInformation("Warehouse export: {Runs} dataset(s), {Rows} rows for tenant {Tenant}", runs.Count, runs.Sum(r => r.Rows), tenantId);
+    }
+}
+
 public class HttpIntegrationTransport : IIntegrationTransport
 {
     private readonly HttpClient _http;

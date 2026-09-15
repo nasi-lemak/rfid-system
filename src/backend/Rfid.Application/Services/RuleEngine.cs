@@ -24,11 +24,12 @@ public class RuleEngine
     private readonly ICurrentContext _ctx;
     private readonly ILivePublisher _live;
     private readonly IWebhookDispatcher _webhooks;
+    private readonly NotificationService? _notifications;
     private List<Rule>? _cache;
 
-    public RuleEngine(IAppDb db, ICurrentContext ctx, ILivePublisher live, IWebhookDispatcher webhooks)
+    public RuleEngine(IAppDb db, ICurrentContext ctx, ILivePublisher live, IWebhookDispatcher webhooks, NotificationService? notifications = null)
     {
-        _db = db; _ctx = ctx; _live = live; _webhooks = webhooks;
+        _db = db; _ctx = ctx; _live = live; _webhooks = webhooks; _notifications = notifications;
     }
 
     /// <summary>Drops the per-request rule cache, e.g. after a template installed new rules in the same unit of work.</summary>
@@ -44,6 +45,7 @@ public class RuleEngine
             switch (rule.Action)
             {
                 case RuleAction.CreateAlert:
+                case RuleAction.Notify:
                 {
                     var message = Interpolate(rule.Params.TryGetValue("message", out var m) ? m?.ToString() : null, c)
                                   ?? $"{rule.Name}: {c.Item.Name} ({c.Item.Identifier})";
@@ -56,6 +58,7 @@ public class RuleEngine
                     _db.Alerts.Add(alert);
                     alerts.Add(alert);
                     await _live.PublishAlertAsync(alert, ct);
+                    if (_notifications != null) await _notifications.OnAlertRaisedAsync(alert, rule, ct);
                     break;
                 }
                 case RuleAction.SetState:

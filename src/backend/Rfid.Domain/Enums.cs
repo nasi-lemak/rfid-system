@@ -35,7 +35,8 @@ public enum LineResult { Ok, Unknown, Unexpected, Rejected }
 public enum ItemEventType
 {
     Created, Seen, Moved, CustodyChanged, StateChanged, Counted, QuantityChanged,
-    Packed, Unpacked, Inspected, Maintained, Disposed, Commissioned, Alert, LabelPrinted, Imported
+    Packed, Unpacked, Inspected, Maintained, Disposed, Commissioned, Alert, LabelPrinted, Imported,
+    GeofenceEntered, GeofenceExited, Positioned
 }
 
 public enum ReadSource { Handheld, Fixed, Manual }
@@ -44,7 +45,7 @@ public enum StocktakeStatus { Open, Reconciled, Applied, Cancelled }
 
 public enum StocktakeResult { Pending, Found, Missing, Unexpected, Unknown }
 
-public enum RuleAction { CreateAlert, SetState, Webhook }
+public enum RuleAction { CreateAlert, SetState, Webhook, Notify }
 
 public enum Severity { Info, Warning, Critical }
 
@@ -57,3 +58,15 @@ public enum IntegrationAuth { None, Bearer, Basic, OAuth2ClientCredentials }
 public enum PrintJobStatus { Queued, Printing, Printed, Failed, Cancelled }
 
 public enum PrintReason { Initial, Reprint, Replacement, Batch }
+
+public enum DeviceHealth { Unknown, Online, Degraded, Offline, Updating }
+
+public enum FirmwareRolloutStatus { Pending, Sent, Downloading, Installing, Done, Failed, Cancelled }
+
+public enum GeoFenceKind { Circle, Polygon }
+
+public enum GeoFenceTrigger { Enter, Exit, Both }
+
+public enum NotificationKind { Email, Sms, Teams, Slack, Webhook }
+
+public enum NotificationStatus { Sent, Failed, Skipped }

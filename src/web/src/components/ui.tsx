@@ -58,3 +58,32 @@ export function LifecycleView({ lifecycle }: { lifecycle?: { initial?: string | 
     </div>
   );
 }
+
+/** Line/area trend over time buckets. One series, one hue; hover a point for its value. */
+export function TrendChart({ buckets, height = 120, label }: { buckets: { start: string; count: number }[]; height?: number; label?: string }) {
+  const [hover, setHover] = useState<number | null>(null);
+  if (buckets.length === 0) return <div className="muted small">No data</div>;
+  const w = 600, padL = 34, padB = 18, padT = 8; const max = Math.max(1, ...buckets.map((b) => b.count));
+  const x = (i: number) => padL + (i * (w - padL - 8)) / Math.max(1, buckets.length - 1); const y = (v: number) => padT + (height - padT - padB) * (1 - v / max);
+  const path = buckets.map((b, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(b.count).toFixed(1)}`).join(' ');
+  const area = `${path} L${x(buckets.length - 1).toFixed(1)},${y(0)} L${x(0).toFixed(1)},${y(0)} Z`;
+  const ticks = [0, max / 2, max].map((v) => Math.round(v));
+  const fmtDay = (s: string) => new Date(s).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const h = hover != null ? buckets[hover] : null;
+  return (
+    <div style={{ position: 'relative' }}>
+      <svg viewBox={`0 0 ${w} ${height}`} style={{ width: '100%', height }} onMouseLeave={() => setHover(null)}>
+        {ticks.map((t) => <g key={t}><line x1={padL} x2={w - 8} y1={y(t)} y2={y(t)} stroke="var(--border)" strokeDasharray="2 3" /><text x={padL - 6} y={y(t) + 4} fontSize={10} textAnchor="end" fill="var(--muted)">{t}</text></g>)}
+        <path d={area} fill="var(--primary)" fillOpacity={0.08} />
+        <path d={path} fill="none" stroke="var(--primary)" strokeWidth={2} strokeLinejoin="round" />
+        {buckets.map((b, i) => <g key={b.start}>
+          <rect x={x(i) - (w - padL) / buckets.length / 2} y={0} width={(w - padL) / buckets.length} height={height} fill="transparent" onMouseEnter={() => setHover(i)} />
+          {(hover === i || b.count === max) && <circle cx={x(i)} cy={y(b.count)} r={hover === i ? 5 : 3.5} fill="var(--primary)" stroke="var(--panel)" strokeWidth={2} />}
+        </g>)}
+        {h && <line x1={x(hover!)} x2={x(hover!)} y1={padT} y2={height - padB} stroke="var(--muted)" strokeOpacity={0.5} />}
+        {[0, Math.floor(buckets.length / 2), buckets.length - 1].filter((v, i, a) => a.indexOf(v) === i).map((i) => <text key={i} x={x(i)} y={height - 4} fontSize={10} textAnchor={i === 0 ? 'start' : i === buckets.length - 1 ? 'end' : 'middle'} fill="var(--muted)">{fmtDay(buckets[i].start)}</text>)}
+      </svg>
+      {h && <div style={{ position: 'absolute', top: 4, right: 8, background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', fontSize: 12, pointerEvents: 'none' }}><b>{h.count}</b> {label ?? ''} · {fmtDay(h.start)}</div>}
+    </div>
+  );
+}

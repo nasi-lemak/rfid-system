@@ -30,6 +30,17 @@ public interface IAppDb
     DbSet<WorkerLease> WorkerLeases { get; }
     DbSet<PositionFix> PositionFixes { get; }
     DbSet<UserSiteAccess> UserSiteAccess { get; }
+    DbSet<DeviceHeartbeat> DeviceHeartbeats { get; }
+    DbSet<FirmwareRelease> FirmwareReleases { get; }
+    DbSet<FirmwareRollout> FirmwareRollouts { get; }
+    DbSet<GeoFence> GeoFences { get; }
+    DbSet<GpsFix> GpsFixes { get; }
+    DbSet<GeoFenceState> GeoFenceStates { get; }
+    DbSet<Dashboard> Dashboards { get; }
+    DbSet<NotificationChannel> NotificationChannels { get; }
+    DbSet<EscalationPolicy> EscalationPolicies { get; }
+    DbSet<NotificationLog> NotificationLogs { get; }
+    DbSet<WarehouseExportRun> WarehouseExportRuns { get; }
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }
 

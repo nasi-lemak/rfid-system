@@ -71,14 +71,14 @@ public class LlrpReaderService : BackgroundService
                 {
                     var opts = OptionsFor(d);
                     var key = $"{ep!.Value.host}:{ep.Value.port}|{System.Text.Json.JsonSerializer.Serialize(opts)}";
-                    if (_clients.TryGetValue(d.Id, out var existing) && existing.client.Connected && existing.host == key) continue;
+                    if (_clients.TryGetValue(d.Id, out var existing) && existing.client.Connected && existing.host == key) { await HeartbeatAsync(d, existing.client, ct); continue; }
                     if (existing.client != null) await existing.client.StopAsync();
                     var client = new LlrpClient(ep.Value.host, ep.Value.port);
                     client.Log += m => _log.LogInformation("LLRP {Device}: {Message}", d.Name, m);
                     var deviceId = d.Id; var tenantId = d.TenantId; var deviceName = d.Name;
                     client.TagsReported += tags => _ = IngestAsync(tenantId, deviceId, deviceName, tags);
                     client.GpiChanged += (port, high) => _log.LogInformation("LLRP {Device}: GPI {Port} {State}", deviceName, port, high ? "high" : "low");
-                    try { await client.StartAsync(opts, ct); _clients[d.Id] = (client, key); }
+                    try { await client.StartAsync(opts, ct); _clients[d.Id] = (client, key); await HeartbeatAsync(d, client, ct); }
                     catch (Exception ex) when (ex is not OperationCanceledException) { _log.LogWarning("LLRP {Device} at {Endpoint}: {Message}; will retry", d.Name, key, ex.Message); await client.StopAsync(); _clients.TryRemove(d.Id, out _); }
                 }
                 foreach (var stale in _clients.Keys.Except(wanted.Select(w => w.d.Id)).ToList()) { if (_clients.TryRemove(stale, out var sc)) await sc.client.StopAsync(); }
@@ -93,6 +93,18 @@ public class LlrpReaderService : BackgroundService
             foreach (var id in _clients.Keys) await leases.ReleaseAsync("llrp:" + id, ClusterNode.Id);
         }
         catch (Exception ex) { _log.LogDebug(ex, "LLRP lease release failed"); }
+    }
+
+    /// <summary>Records a health sample for a connected LLRP reader (firmware from GET_READER_CAPABILITIES, tags/min from the client counter).</summary>
+    private async Task HeartbeatAsync(Device d, LlrpClient client, CancellationToken ct)
+    {
+        try
+        {
+            using var _ = AmbientContext.Use(d.TenantId, deviceId: d.Id);
+            using var scope = _scopes.CreateScope();
+            await scope.ServiceProvider.GetRequiredService<DeviceHealthService>().RecordAsync(d.Id, new HeartbeatRequest { FirmwareVersion = client.Capabilities?.Firmware, Metrics = new() { ["tagsReceived"] = client.TagsReceived, ["connectedAt"] = client.ConnectedAt, ["transport"] = "llrp" } }, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException) { _log.LogDebug(ex, "LLRP {Device}: heartbeat failed", d.Name); }
     }
 
     private async Task IngestAsync(Guid tenantId, Guid deviceId, string deviceName, IReadOnlyList<LlrpTag> tags)

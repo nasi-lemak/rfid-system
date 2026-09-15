@@ -18,3 +18,6 @@ appsettings.*.local.json
 Thumbs.db
 .idea/
 .vscode/
+
+# data-warehouse landing zone (local runs)
+src/backend/Rfid.Api/warehouse/

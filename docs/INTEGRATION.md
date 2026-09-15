@@ -203,6 +203,66 @@ work is coordinated with leases in `worker_leases` (`GET /api/cluster` lists the
 pre-download master data and floor plans (Settings → *Download for offline*); GET responses are
 served from the device cache whenever the server is unreachable.
 
+## Reader health & firmware
+
+Devices post `POST /api/devices/{id}/heartbeat` `{ firmwareVersion, cpuPercent, temperatureC, readsPerMinute, batteryPercent, metrics }`
+(device tokens can use `POST /api/devices/heartbeat`). LLRP readers are sampled automatically with the
+firmware version from `GET_READER_CAPABILITIES`. Health = age of the last heartbeat or read versus the
+device SLA (`heartbeatSlaMinutes`, default `DeviceHealth:DefaultSlaMinutes` = 15; handhelds and
+printers 24 h): Online ≤ SLA, Degraded ≤ 2×SLA, Offline beyond (critical alert, cleared on return).
+
+Firmware: `POST /api/firmware/releases` `{ vendor, model, version, url, checksum, notes }`, then
+`POST /api/firmware/releases/{id}/rollout` `{ deviceIds, scheduledAt? }`. Devices poll
+`GET /api/devices/{id}/firmware/pending` (→ `{ rolloutId, version, url, checksum }`) and report with
+`POST /api/firmware/rollouts/{id}/report` `{ status: Downloading|Installing|Done|Failed, error }`.
+
+## GPS & geofences
+
+`POST /api/ingest/gps` `{ deviceId?, fixes: [{ itemId? | epc? | identifier? | deviceId?, lat, lng, speedKph?, headingDeg?, accuracyM?, at? }] }`.
+A telematics unit is linked to its vehicle/container with the device's `trackedItemId`. Fixes are
+stored when the item moved ≥ 10 m or 5 min passed; every fix is tested against enabled fences:
+
+- enter/exit → `GeofenceEntered` / `GeofenceExited` events (rules can trigger on them), alerts per the
+  fence's trigger and severity, and a move to the fence's linked location on entry;
+- `maxDwellMinutes` → one dwell alert when exceeded (checked every minute).
+
+Fences: `GET/POST/PUT/DELETE /api/geo/fences` (`kind: Circle` with `centerLat/centerLng/radiusM` or
+`Polygon` with `points`). Map data: `GET /api/geo/map?hours`, tracks: `GET /api/geo/track?itemId&from&to`.
+Tiles default to OpenStreetMap; set `VITE_MAP_TILES` / `VITE_MAP_ATTRIBUTION` for your own tile server.
+
+## Notification channels & escalation
+
+| Kind | Config keys |
+|---|---|
+| Email | `host`, `port`, `useTls`, `username`, `password`, `from`, `to` (comma list) |
+| Sms | `accountSid`, `authToken`, `from`, `to` (comma list), `apiBase` (Twilio-compatible REST) |
+| Teams / Slack | `url` (incoming webhook; Teams receives an Adaptive Card) |
+| Webhook | `url` (JSON `{ subject, body, severity, alertId, itemId, link, at }`) |
+
+Rules list `notifyChannelIds` and an `escalationPolicyId`; channels with `catchAll` receive every
+alert at or above `minSeverity`. An escalation policy is an ordered list of steps
+`{ afterMinutes, channelIds, message }`; the first step with `afterMinutes: 0` fires immediately,
+later steps fire while the alert is still open and unacknowledged (`repeatLastStep` keeps
+re-notifying). A policy marked `isDefault` applies to alerts raised without a rule (device health,
+geofence, firmware). `GET /api/notifications/log` is the delivery audit; `POST
+/api/notifications/channels/{id}/test` sends a test message. `Notifications:BaseUrl` is the link
+included in messages.
+
+## Warehouse export
+
+| Setting | Meaning |
+|---|---|
+| `Warehouse:Enabled` | run the incremental export every `Warehouse:IntervalMinutes` |
+| `Warehouse:Path` | landing zone root (default `./warehouse`; mount an object-storage gateway or NFS here) |
+| `Warehouse:Format` | `parquet` (default) or `csv` |
+| `Warehouse:InitialDays` | how far back the first incremental run reaches |
+
+Files land at `{Path}/{tenant}/{dataset}/dt=YYYY-MM-DD/{dataset}-{from}-{to}-{run}.parquet`. Datasets:
+`items` (daily snapshot), `events`, `reads`, `alerts`, `operations`, `position_fixes`, `gps_fixes`,
+`presence_sessions`, `stocktakes`, `device_heartbeats`. `POST /api/warehouse/export` writes one window
+on demand, `POST /api/warehouse/run` triggers the incremental pass, `GET /api/warehouse/download`
+streams a window to the caller. Analytics endpoints: `/api/analytics/trend|utilization|dwell|accuracy|alert-response|uptime`.
+
 ## Template customisation
 
 `GET /api/templates/export` returns the tenant's item types, lifecycles and rules as a template

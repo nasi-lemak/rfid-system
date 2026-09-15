@@ -30,7 +30,7 @@ public static class Dto
 
     public static object Alert(Alert a, Item? item = null) => new
     {
-        a.Id, a.RuleId, a.ItemId, ItemName = item?.Name, ItemIdentifier = item?.Identifier, a.LocationId, a.Severity, a.Message, a.Status, a.RaisedAt, a.AcknowledgedBy, a.ClosedAt,
+        a.Id, a.RuleId, a.ItemId, ItemName = item?.Name, ItemIdentifier = item?.Identifier, a.LocationId, a.Severity, a.Message, a.Status, a.RaisedAt, a.AcknowledgedBy, a.ClosedAt, a.AcknowledgedAt, a.Source, a.DeviceId, a.EscalationLevel, a.NextEscalationAt,
     };
 }
 

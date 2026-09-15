@@ -110,7 +110,7 @@ public class DemoSeeder
         var devices = new Dictionary<string, Device>(StringComparer.OrdinalIgnoreCase);
         foreach (var d in sc.Devices)
         {
-            var dev = new Device { TenantId = tenant, Name = d.Name, Kind = d.Kind, Model = d.Model, SerialNumber = $"{sc.SiteCode}-{Slug(d.Name)}", SiteLocationId = site.Id, TokenHash = d.Token != null ? PasswordHasher.HashToken(d.Token) : null, LastSeenAt = now.AddMinutes(-Random(sc, d.Name) % 180) };
+            var dev = new Device { TenantId = tenant, Name = d.Name, Kind = d.Kind, Model = d.Model, SerialNumber = $"{sc.SiteCode}-{Slug(d.Name)}", SiteLocationId = site.Id, TokenHash = d.Token != null ? PasswordHasher.HashToken(d.Token) : null, LastSeenAt = now.AddMinutes(-Random(sc, d.Name) % 180), HeartbeatSlaMinutes = 7 * 24 * 60 /* simulated readers: a week before they count as offline */, Health = DeviceHealth.Online, HealthChangedAt = now, FirmwareVersion = d.Kind is DeviceKind.Handheld or DeviceKind.Printer ? null : "8.0.4" };
             foreach (var a in d.Antennas) dev.Antennas.Add(new Antenna { TenantId = tenant, Port = a.Port, LocationId = (locs.GetValueOrDefault(a.Location) ?? throw new DomainException($"{sc.Template}: unknown antenna location '{a.Location}'")).Id, Direction = a.Direction, PowerDbm = 27, X = a.X, Y = a.Y, RssiAt1m = a.X.HasValue ? -45 : null, PathLossExponent = a.X.HasValue ? 2.2 : null });
             _db.Devices.Add(dev); devices[d.Name] = dev; result.Devices++;
         }

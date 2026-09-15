@@ -11,6 +11,14 @@ public class Device : TenantEntity
     public DateTime? LastSeenAt { get; set; }
     public Dictionary<string, object?> Config { get; set; } = new();
     public List<Antenna> Antennas { get; set; } = new();
+    /// <summary>Health SLA: expected heartbeat/read interval in minutes (null → tenant default). Offline when exceeded ×2, degraded when exceeded.</summary>
+    public int? HeartbeatSlaMinutes { get; set; }
+    public DateTime? LastHeartbeatAt { get; set; }
+    public string? FirmwareVersion { get; set; }
+    public DeviceHealth Health { get; set; } = DeviceHealth.Unknown;
+    public DateTime? HealthChangedAt { get; set; }
+    /// <summary>For telematics units: the item (vehicle, trailer, container) whose GPS position this device reports.</summary>
+    public Guid? TrackedItemId { get; set; }
 }
 
 public class Antenna : TenantEntity

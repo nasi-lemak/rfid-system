@@ -10,6 +10,10 @@ public class Rule : TenantEntity
     public Dictionary<string, object?> Params { get; set; } = new();
     public Severity Severity { get; set; } = Severity.Warning;
     public string? Vertical { get; set; }
+    /// <summary>Channels notified immediately when the rule raises an alert.</summary>
+    public List<Guid> NotifyChannelIds { get; set; } = new();
+    /// <summary>Escalation policy for alerts raised by this rule while they stay unacknowledged.</summary>
+    public Guid? EscalationPolicyId { get; set; }
 }
 
 /// <summary>field: e.g. "item.state", "item.cycleCount", "toLocation.kind", "data.direction". op: eq, ne, gt, gte, lt, lte, in, contains, exists.</summary>
@@ -31,6 +35,13 @@ public class Alert : TenantEntity
     public DateTime RaisedAt { get; set; } = DateTime.UtcNow;
     public Guid? AcknowledgedBy { get; set; }
     public DateTime? ClosedAt { get; set; }
+    public DateTime? AcknowledgedAt { get; set; }
+    /// <summary>Source for alerts not raised by a rule: "geofence", "device-health", "stocktake" …</summary>
+    public string? Source { get; set; }
+    public Guid? DeviceId { get; set; }
+    public Guid? EscalationPolicyId { get; set; }
+    public int EscalationLevel { get; set; }
+    public DateTime? NextEscalationAt { get; set; }
 }
 
 public class SolutionTemplate : EntityBase

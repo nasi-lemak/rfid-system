@@ -27,6 +27,9 @@ import Import from './pages/Import';
 import PrintQueue from './pages/PrintQueue';
 import SsoCallback from './pages/SsoCallback';
 import Cluster from './pages/Cluster';
+import MapPage from './pages/Map';
+import Notifications from './pages/Notifications';
+import Analytics from './pages/Analytics';
 
 export default function App() {
   const { user } = useAuth();
@@ -59,6 +62,9 @@ export default function App() {
         <Route path="print-queue" element={<PrintQueue />} />
         <Route path="import" element={<Import />} />
         <Route path="cluster" element={<Cluster />} />
+        <Route path="map" element={<MapPage />} />
+        <Route path="notifications" element={<Notifications />} />
+        <Route path="analytics" element={<Analytics />} />
         <Route path="auth/callback" element={<Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

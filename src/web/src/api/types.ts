@@ -27,12 +27,12 @@ export interface Item {
 export interface Location { id: Guid; parentId?: Guid | null; kind: string; name: string; code?: string | null; path: string; latitude?: number | null; longitude?: number | null; isMobile: boolean; attributes: Record<string, unknown>; itemCount?: number }
 export interface Party { id: Guid; kind: string; name: string; code?: string | null; externalRef?: string | null; email?: string | null; attributes: Record<string, unknown>; itemsInCustody?: number }
 export interface Antenna { id?: Guid; port: number; locationId?: Guid | null; locationName?: string | null; direction: 'None' | 'In' | 'Out'; powerDbm?: number | null; x?: number | null; y?: number | null; rssiAt1m?: number | null; pathLossExponent?: number | null }
-export interface Device { id: Guid; name: string; kind: string; serialNumber?: string | null; model?: string | null; siteLocationId?: Guid | null; lastSeenAt?: string | null; config: Record<string, unknown>; hasToken: boolean; antennas: Antenna[]; llrp?: { host: string; port: number } | null }
+export interface Device { id: Guid; name: string; kind: string; serialNumber?: string | null; model?: string | null; siteLocationId?: Guid | null; lastSeenAt?: string | null; config: Record<string, unknown>; hasToken: boolean; antennas: Antenna[]; llrp?: { host: string; port: number } | null; health?: string; healthChangedAt?: string | null; lastHeartbeatAt?: string | null; firmwareVersion?: string | null; heartbeatSlaMinutes?: number | null; trackedItemId?: Guid | null }
 
 export interface ItemEvent { id: Guid; itemId: Guid; itemName?: string; itemIdentifier?: string; type: string; fromLocationId?: Guid | null; toLocationId?: Guid | null; fromPartyId?: Guid | null; toPartyId?: Guid | null; fromState?: string | null; toState?: string | null; operationId?: Guid | null; deviceId?: Guid | null; userId?: Guid | null; occurredAt: string; data: Record<string, unknown> }
-export interface Alert { id: Guid; ruleId?: Guid | null; itemId?: Guid | null; itemName?: string; itemIdentifier?: string; locationId?: Guid | null; severity: 'Info' | 'Warning' | 'Critical'; message: string; status: 'Open' | 'Acknowledged' | 'Closed'; raisedAt: string }
+export interface Alert { id: Guid; ruleId?: Guid | null; itemId?: Guid | null; itemName?: string; itemIdentifier?: string; locationId?: Guid | null; severity: 'Info' | 'Warning' | 'Critical'; message: string; status: 'Open' | 'Acknowledged' | 'Closed'; raisedAt: string; source?: string | null; deviceId?: Guid | null; escalationLevel?: number; nextEscalationAt?: string | null; acknowledgedAt?: string | null }
 export interface RuleCondition { field: string; op: string; value: unknown }
-export interface Rule { id: Guid; name: string; enabled: boolean; trigger: string; conditions: RuleCondition[]; action: string; params: Record<string, unknown>; severity: string; vertical?: string | null }
+export interface Rule { id: Guid; name: string; enabled: boolean; trigger: string; conditions: RuleCondition[]; action: string; params: Record<string, unknown>; severity: string; vertical?: string | null; notifyChannelIds?: Guid[]; escalationPolicyId?: Guid | null }
 
 export interface OperationSummary { id: Guid; type: string; status: string; fromLocation?: string | null; toLocation?: string | null; party?: string | null; targetState?: string | null; reference?: string | null; notes?: string | null; user?: string | null; startedAt: string; completedAt?: string | null; lineCount: number; ok: number; rejected: number; unknown: number }
 export interface OperationLineResult { epc?: string | null; itemId?: Guid | null; itemName?: string | null; result: string; message?: string | null; newState?: string | null }
@@ -78,3 +78,30 @@ export interface ImportRowResult { identifier: string; action: string; changes: 
 export interface ImportResult { created: number; updated: number; unchanged: number; errors: number; dryRun: boolean; rows: ImportRowResult[] }
 export interface ReconcileResult { matched: number; missingInPlatform: string[]; missingInErp: string[]; differences: { identifier: string; field: string; erp?: string | null; platform?: string | null }[] }
 export interface LlrpStatus { device: string; endpoint?: { host: string; port: number } | null; options: { transmitPowerDbm?: number | null; session: number; tagPopulation: number; antennaIds?: number[] | null; gpiStartPort?: number | null; reportEveryNTags: number }; connected: boolean; connectedAt?: string | null; tagsReceived?: number; capabilities?: { manufacturer: string; modelId: number; firmware: string; maxAntennas: number; gpis: number; gpos: number; hasUtcClock: boolean; powerTable: { index: number; dbm: number }[] } | null }
+
+// ── v1.5 ──
+export interface DeviceHealthRow { deviceId: Guid; name: string; health: string; heartbeats: number; expected: number; uptimePercent: number; lastHeartbeatAt?: string | null; firmwareVersion?: string | null; slaMinutes: number }
+export interface DeviceHealthReport { days: number; summary: Record<string, number>; rows: DeviceHealthRow[] }
+export interface FirmwareRelease { id: Guid; vendor: string; model: string; version: string; url?: string | null; checksum?: string | null; notes?: string | null; releasedAt: string; isActive: boolean; devicesOnVersion: number; rollouts: Record<string, number> }
+export interface FirmwareRollout { id: Guid; releaseId: Guid; version?: string; deviceId: Guid; device?: string; status: string; scheduledAt: string; startedAt?: string | null; completedAt?: string | null; error?: string | null; attempts: number; fromVersion?: string | null }
+export interface GeoPoint { lat: number; lng: number }
+export interface GeoFence { id: Guid; name: string; kind: 'Circle' | 'Polygon'; centerLat?: number | null; centerLng?: number | null; radiusM?: number | null; points: GeoPoint[]; locationId?: Guid | null; location?: string | null; trigger: 'Enter' | 'Exit' | 'Both'; severity: string; enabled: boolean; color?: string | null; maxDwellMinutes?: number | null; itemTypeId?: Guid | null; inside: number }
+export interface MapItem { itemId: Guid; name: string; identifier: string; itemType?: string | null; lat: number; lng: number; at?: string | null; speedKph?: number | null; location?: string | null; fences: string[] }
+export interface MapData { items: MapItem[]; fences: GeoFence[] }
+export interface GpsTrack { item?: { id: Guid; name: string; identifier: string } | null; from: string; to: string; points: { lat: number; lng: number; at: string; speedKph?: number | null }[] }
+export interface DashboardWidget { id: string; type: string; title: string; w: number; h: number; config: Record<string, unknown> }
+export interface DashboardDef { id: Guid; name: string; isDefault: boolean; ownerUserId?: Guid | null; shared: boolean; widgets: DashboardWidget[]; editable: boolean }
+export interface WidgetResult { id: string; type: string; data: unknown; error?: string | null }
+export interface WidgetTypes { types: string[]; statFilters: string[]; breakdowns: string[]; trendMetrics: string[]; listSources: string[] }
+export interface NotificationChannel { id: Guid; name: string; kind: 'Email' | 'Sms' | 'Teams' | 'Slack' | 'Webhook'; enabled: boolean; catchAll: boolean; minSeverity: string; config: Record<string, unknown>; createdAt?: string }
+export interface ChannelRow { channel: NotificationChannel; sent7d: number; failed7d: number }
+export interface EscalationStep { afterMinutes: number; channelIds: Guid[]; message?: string | null }
+export interface EscalationPolicy { id: Guid; name: string; steps: EscalationStep[]; repeatLastStep: boolean; isDefault: boolean; minSeverity: string }
+export interface NotificationLogRow { id: Guid; channelId: Guid; channel?: string; alertId?: Guid | null; recipient: string; subject: string; status: string; error?: string | null; sentAt: string; escalationLevel: number }
+export interface TrendSeries { metric: string; bucketSize: string; buckets: { start: string; count: number }[]; total: number }
+export interface UtilizationRow { itemTypeId: Guid; itemType: string; items: number; active: number; inCustody: number; movedInWindow: number; eventsInWindow: number; avgCycles: number; utilizationPercent: number }
+export interface DwellRow { locationId: Guid; location: string; kind: string; sessions: number; distinctItems: number; avgMinutes: number; maxMinutes: number; p90Minutes: number }
+export interface AccuracyReport { overallAccuracy?: number | null; stocktakes: number; rows: { id: Guid; name: string; location: string; at: string; expected: number; found: number; missing: number; unexpected: number; accuracy?: number | null }[] }
+export interface AlertResponseRow { severity: string; raised: number; acknowledged: number; closed: number; openNow: number; avgMinutesToAck?: number | null; avgMinutesToClose?: number | null; escalated: number }
+export interface WarehouseStatus { enabled: boolean; path: string; format: string; intervalMinutes: number; datasets: { name: string; snapshot: boolean; lastExportedTo?: string | null }[]; runs: WarehouseRun[] }
+export interface WarehouseRun { id: Guid; dataset: string; from: string; to: string; rows: number; path: string; format: string; bytes: number; startedAt: string; completedAt?: string | null; error?: string | null; manual: boolean }

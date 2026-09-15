@@ -169,7 +169,7 @@ public class RulesController : ControllerBase
     public async Task<IActionResult> Update(Guid id, Rule r)
     {
         var e = await _db.Rules.FindAsync(id); if (e == null) return NotFound();
-        e.Name = r.Name; e.Enabled = r.Enabled; e.Trigger = r.Trigger; e.Conditions = r.Conditions; e.Action = r.Action; e.Params = r.Params; e.Severity = r.Severity;
+        e.Name = r.Name; e.Enabled = r.Enabled; e.Trigger = r.Trigger; e.Conditions = r.Conditions; e.Action = r.Action; e.Params = r.Params; e.Severity = r.Severity; e.NotifyChannelIds = r.NotifyChannelIds; e.EscalationPolicyId = r.EscalationPolicyId;
         await _db.SaveChangesAsync(); return Ok(e);
     }
 
@@ -202,14 +202,14 @@ public class AlertsController : ControllerBase
     public async Task<IActionResult> Ack(Guid id)
     {
         var a = await _db.Alerts.FindAsync(id); if (a == null) return NotFound();
-        a.Status = AlertStatus.Acknowledged; a.AcknowledgedBy = _ctx.UserId; await _db.SaveChangesAsync(); return Ok(Dto.Alert(a));
+        a.Status = AlertStatus.Acknowledged; a.AcknowledgedBy = _ctx.UserId; a.AcknowledgedAt ??= DateTime.UtcNow; a.NextEscalationAt = null; await _db.SaveChangesAsync(); return Ok(Dto.Alert(a));
     }
 
     [HttpPost("{id:guid}/close"), Authorize(Policy = "Operator")]
     public async Task<IActionResult> Close(Guid id)
     {
         var a = await _db.Alerts.FindAsync(id); if (a == null) return NotFound();
-        a.Status = AlertStatus.Closed; a.ClosedAt = DateTime.UtcNow; a.AcknowledgedBy ??= _ctx.UserId; await _db.SaveChangesAsync(); return Ok(Dto.Alert(a));
+        a.Status = AlertStatus.Closed; a.ClosedAt = DateTime.UtcNow; a.AcknowledgedBy ??= _ctx.UserId; a.AcknowledgedAt ??= a.ClosedAt; a.NextEscalationAt = null; await _db.SaveChangesAsync(); return Ok(Dto.Alert(a));
     }
 }
 

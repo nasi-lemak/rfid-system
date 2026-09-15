@@ -186,9 +186,21 @@ stops renewing loses its leases and another node takes over. Nothing else is nod
 symmetric-key, position tracks and the print queue are in the database, and SignalR groups are
 shared through Redis when configured.
 
+### v1.5 additions
+
+| Component | Role |
+|---|---|
+| `DeviceHealthService`, `DeviceHeartbeat`, `FirmwareRelease`/`FirmwareRollout` | Heartbeat SLAs → health state + alerts; uptime; firmware rollout state machine (Pending → Sent → Downloading → Installing → Done/Failed) |
+| `GeoService`, `GeoFence`, `GpsFix`, `GeoFenceState` | GPS ingestion, haversine/ray-casting containment, enter/exit/dwell transitions with events, alerts, rules and location moves |
+| `DashboardService`, `Dashboard`/`DashboardWidget` | Server-side widget evaluation for stored dashboards |
+| `NotificationService`, `INotificationSender`, `NotificationChannel`, `EscalationPolicy`, `NotificationLog` | Rule/catch-all routing, escalation steps, delivery audit; `HttpNotificationSender` implements SMTP / Twilio / Teams / Slack / webhook |
+| `WarehouseExportService`, `WarehouseExportRun` | Flat row models → Parquet (Parquet.Net) or CSV, day-partitioned landing zone, incremental watermarks |
+| `AnalyticsService` | Trend buckets, utilisation, dwell, inventory accuracy, alert response |
+| `MonitoringService`, `WarehouseExportJobService` | Lease-aware minute loop (health, dwell, escalation) and scheduled export |
+
 ## 7. Roadmap
-- Reader firmware management and health SLAs.
-- Geofenced GPS assets (vehicles, containers) with map tiles.
-- Configurable dashboards and KPI widgets.
-- Rule actions (e-mail/SMS/Teams) and escalation policies.
-- Data warehouse export (Parquet) and long-term analytics.
+- Mobile geofencing and GPS capture in the handheld.
+- Anomaly detection on read patterns.
+- Tag encoding wizards for GS1 SSCC/GRAI/GIAI at scale.
+- Multi-language UI.
+- Audit log viewer and retention policies.
