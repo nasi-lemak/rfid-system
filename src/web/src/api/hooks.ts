@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { del, get, post, put } from './client';
-import type { Alert, Dashboard, SeedResult, FloorPlanSummary, FloorPlan, HeatMap, PathHistory, HistoryItem, ClusterStatus, UserSites, DeviceHealthReport, FirmwareRelease, FirmwareRollout, MapData, GpsTrack, DashboardDef, WidgetResult, WidgetTypes, DashboardWidget, ChannelRow, EscalationPolicy, NotificationLogRow, TrendSeries, UtilizationRow, DwellRow, AccuracyReport, AlertResponseRow, DeviceHealthRow, WarehouseStatus, Anomaly, HourProfile, SerialPool, SchemeInfo, EncodingBatch, AuditEntry, AuditSummary, RetentionRow, PrintJob, LlrpStatus, ZoneOccupancy, MusterReport, TimingRow, ReportDef, ReportResult, IntegrationEndpoint, StocktakeSchedule, Device, Item, ItemEvent, ItemType, Location, Lookups, OperationRequest, OperationResult, OperationSummary, Paged, Party, Rule, StocktakeDetail, StocktakeListRow, StocktakeSummary, Tag, Template } from './types';
+import type { Alert, Dashboard, SeedResult, FloorPlanSummary, FloorPlan, HeatMap, PathHistory, HistoryItem, ClusterStatus, UserSites, DeviceHealthReport, FirmwareRelease, FirmwareRollout, MapData, GpsTrack, DashboardDef, WidgetResult, WidgetTypes, DashboardWidget, ChannelRow, EscalationPolicy, NotificationLogRow, TrendSeries, UtilizationRow, DwellRow, AccuracyReport, AlertResponseRow, DeviceHealthRow, WarehouseStatus, Anomaly, HourProfile, SerialPool, SchemeInfo, EncodingBatch, AuditEntry, AuditSummary, RetentionRow, RateCard, PartyBalance, LedgerRow, InvoiceRow, MaintenanceReport, MaintenancePrediction, PortalMe, PortalItem, PortalActivity, EpcisCapture, PrintJob, LlrpStatus, ZoneOccupancy, MusterReport, TimingRow, ReportDef, ReportResult, IntegrationEndpoint, StocktakeSchedule, Device, Item, ItemEvent, ItemType, Location, Lookups, OperationRequest, OperationResult, OperationSummary, Paged, Party, Rule, StocktakeDetail, StocktakeListRow, StocktakeSummary, Tag, Template } from './types';
 
 export const useLookups = () => useQuery({ queryKey: ['lookups'], queryFn: () => get<Lookups>('/api/lookups'), staleTime: Infinity });
 export const useDashboard = () => useQuery({ queryKey: ['dashboard'], queryFn: () => get<Dashboard>('/api/dashboard'), refetchInterval: 15000 });
@@ -111,3 +111,17 @@ export const useBatches = () => useQuery({ queryKey: ['batches'], queryFn: () =>
 export const useAudit = (params: Record<string, unknown>) => useQuery({ queryKey: ['audit', params], queryFn: () => get<Paged<AuditEntry>>('/api/audit', params) });
 export const useAuditSummary = () => useQuery({ queryKey: ['audit-summary'], queryFn: () => get<AuditSummary>('/api/audit/summary') });
 export const useRetention = () => useQuery({ queryKey: ['retention'], queryFn: () => get<RetentionRow[]>('/api/retention') });
+
+// ── v1.7 ──
+export const useRateCards = () => useQuery({ queryKey: ['rate-cards'], queryFn: () => get<RateCard[]>('/api/billing/rate-cards') });
+export const useBalances = () => useQuery({ queryKey: ['balances'], queryFn: () => get<PartyBalance[]>('/api/billing/balances') });
+export const useLedger = (params: Record<string, unknown>) => useQuery({ queryKey: ['ledger', params], queryFn: () => get<LedgerRow[]>('/api/billing/ledger', params) });
+export const useInvoices = (params: Record<string, unknown> = {}) => useQuery({ queryKey: ['invoices', params], queryFn: () => get<InvoiceRow[]>('/api/billing/invoices', params) });
+export const useMaintenance = (itemTypeId?: string) => useQuery({ queryKey: ['maintenance', itemTypeId], queryFn: () => get<MaintenanceReport>('/api/maintenance/predictions', { itemTypeId }) });
+export const useMaintenanceItem = (itemId?: string) => useQuery({ queryKey: ['maintenance-item', itemId], queryFn: () => get<{ prediction: MaintenancePrediction; trend: { at: string; risk: number }[] }>(`/api/maintenance/predictions/${itemId}`), enabled: !!itemId });
+export const usePortalMe = () => useQuery({ queryKey: ['portal-me'], queryFn: () => get<PortalMe>('/api/portal/me') });
+export const usePortalItems = (params: Record<string, unknown>) => useQuery({ queryKey: ['portal-items', params], queryFn: () => get<Paged<PortalItem>>('/api/portal/items', params) });
+export const usePortalActivity = () => useQuery({ queryKey: ['portal-activity'], queryFn: () => get<PortalActivity[]>('/api/portal/activity') });
+export const usePortalInvoices = () => useQuery({ queryKey: ['portal-invoices'], queryFn: () => get<InvoiceRow[]>('/api/portal/invoices') });
+export const usePortalLedger = () => useQuery({ queryKey: ['portal-ledger'], queryFn: () => get<LedgerRow[]>('/api/portal/ledger') });
+export const useEpcisCaptures = () => useQuery({ queryKey: ['epcis-captures'], queryFn: () => get<EpcisCapture[]>('/api/epcis/v2/capture') });

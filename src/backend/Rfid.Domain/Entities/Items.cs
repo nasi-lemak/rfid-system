@@ -91,4 +91,6 @@ public class Tag : TenantEntity
     public TagStatus Status { get; set; } = TagStatus.Unassigned;
     public DateTime? EncodedAt { get; set; }
     public Guid? EncodingBatchId { get; set; }
+    /// <summary>For barcode "tags": Code128, GS1-128, QR, DataMatrix, EAN13… (Epc holds the code as scanned, normalised).</summary>
+    public string? Symbology { get; set; }
 }

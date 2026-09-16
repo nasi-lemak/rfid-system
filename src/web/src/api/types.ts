@@ -52,7 +52,7 @@ export interface Dashboard {
   readsPerDay: { day: string; count: number }[]; opsPerDay: { day: string; count: number }[];
 }
 export interface Lookups { operationTypes: string[]; locationKinds: string[]; partyKinds: string[]; deviceKinds: string[]; tagTechnologies: string[]; eventTypes: string[]; ruleActions: string[]; severities: string[]; itemStatuses: string[]; ruleFields: string[]; ruleOps: string[] }
-export interface AuthUser { id: Guid; email: string; displayName: string; role: string; tenantId: Guid; tenantName?: string; restrictToSites?: boolean; sso?: string | null; sites?: { siteLocationId: Guid; siteName?: string | null; role: string }[] }
+export interface AuthUser { id: Guid; email: string; displayName: string; role: string; tenantId: Guid; tenantName?: string; restrictToSites?: boolean; sso?: string | null; portalPartyId?: Guid | null; sites?: { siteLocationId: Guid; siteName?: string | null; role: string }[] }
 export interface HeatMap { locationId: Guid; cellM: number; widthM?: number | null; heightM?: number | null; from: string; to: string; cells: { ix: number; iy: number; x: number; y: number; samples: number; seconds: number; items: number }[] }
 export interface PathHistory { item?: { id: Guid; name: string; identifier: string } | null; from: string; to: string; points: { x: number; y: number; accuracyM?: number | null; at: string; locationId: Guid }[] }
 export interface HistoryItem { itemId: Guid; name?: string | null; identifier?: string | null; fixes: number; first: string; last: string }
@@ -117,3 +117,16 @@ export interface EncodingBatch { id: Guid; name: string; scheme: string; company
 export interface AuditEntry { id: Guid; userId?: Guid | null; userName?: string | null; deviceId?: Guid | null; method: string; path: string; action: string; entityType?: string | null; entityId?: Guid | null; statusCode: number; body?: string | null; ipAddress?: string | null; userAgent?: string | null; at: string; durationMs: number }
 export interface AuditSummary { days: number; total: number; byUser: { userId?: Guid | null; userName?: string | null; count: number; failed: number; last: string }[]; byAction: { action: string; count: number }[]; actions: string[] }
 export interface RetentionRow { id: Guid; dataset: string; description: string; protected: boolean; retainDays?: number | null; enabled: boolean; lastRunAt?: string | null; lastDeleted: number; totalDeleted: number; rows: number; expired: number }
+
+// ── v1.7 ──
+export interface RateCard { id: Guid; name: string; itemTypeId?: Guid | null; itemType?: string | null; partyKind?: string | null; partyId?: Guid | null; party?: string | null; currency: string; depositAmount: number; cycleFee: number; dailyFee: number; freeDays: number; lateFeePerDay: number; lossFee: number; enabled: boolean; priority: number }
+export interface PartyBalance { partyId: Guid; party: string; kind: string; unbilled: number; outstanding: number; depositsHeld: number; openInvoices: number; lastActivity?: string | null }
+export interface LedgerRow { id: Guid; partyId?: Guid; party?: string | null; itemId?: Guid | null; item?: string | null; kind: string; amount: number; currency: string; quantity?: number; description: string; occurredAt: string; invoiceId?: Guid | null }
+export interface InvoiceRow { id: Guid; number: string; partyId?: Guid; party?: string | null; periodFrom: string; periodTo: string; status: string; currency: string; charges: number; credits: number; total: number; issuedAt?: string | null; dueAt?: string | null; paidAt?: string | null; lines: { kind: string; description: string; quantity: number; amount: number }[]; createdAt?: string }
+export interface MaintenanceFactor { name: string; weight: number; value: number; detail: string }
+export interface MaintenancePrediction { itemId: Guid; item: string; identifier: string; itemType: string; risk: number; level: string; predictedServiceAt?: string | null; predictedBy?: string | null; factors: MaintenanceFactor[]; state?: string | null; lastInspectedAt?: string | null; lastMaintainedAt?: string | null; cycleCount: number; maxCycles?: number | null }
+export interface MaintenanceReport { total: number; high: number; medium: number; low: number; rows: MaintenancePrediction[] }
+export interface PortalMe { party: { id: Guid; name: string; kind: string; code?: string | null; email?: string | null }; inCustody: number; overdue: number; dueSoon: number; everHandled: number; openInvoices: number; outstanding: number; depositsHeld: number }
+export interface PortalItem { id: Guid; name: string; identifier: string; itemType?: string | null; state?: string | null; inCustody: boolean; dueBackAt?: string | null; lastSeenAt?: string | null; location?: string | null; epc?: string | null }
+export interface PortalActivity { id: Guid; itemId: Guid; item?: string | null; identifier?: string | null; direction: string; occurredAt: string; reference?: string | null; operation?: string | null }
+export interface EpcisCapture { id: Guid; events: number; applied: number; rejected: number; status: string; errors?: string | null; createdAt: string }

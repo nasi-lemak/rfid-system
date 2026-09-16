@@ -30,6 +30,8 @@ public class User : TenantEntity
     public string? ExternalSubject { get; set; }
     public string? ExternalIssuer { get; set; }
     public DateTime? LastLoginAt { get; set; }
+    /// <summary>Portal users: the supplier/customer party this login is scoped to (read-only view of their items, activity and invoices).</summary>
+    public Guid? PortalPartyId { get; set; }
 }
 
 public class Party : TenantEntity

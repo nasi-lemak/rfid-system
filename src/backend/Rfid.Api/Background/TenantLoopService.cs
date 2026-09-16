@@ -158,6 +158,27 @@ public class RetentionJobService : TenantLoopService
     }
 }
 
+/// <summary>Billing accrual from custody events (hourly) and maintenance forecasts (daily by default), on the lease holder.</summary>
+public class BillingAccrualService : TenantLoopService
+{
+    public BillingAccrualService(IServiceScopeFactory s, ILogger<BillingAccrualService> l, IConfiguration cfg) : base(s, l, TimeSpan.FromMinutes(Math.Max(1, cfg.GetValue("Billing:AccrueMinutes", 60)))) { }
+    protected override async Task RunForTenantAsync(IServiceProvider sp, Guid tenantId, CancellationToken ct)
+    {
+        var n = await sp.GetRequiredService<BillingService>().AccrueAsync(DateTime.UtcNow, ct);
+        if (n > 0) Log.LogInformation("Billing: {Count} ledger entries for tenant {Tenant}", n, tenantId);
+    }
+}
+
+public class MaintenanceForecastService : TenantLoopService
+{
+    public MaintenanceForecastService(IServiceScopeFactory s, ILogger<MaintenanceForecastService> l, IConfiguration cfg) : base(s, l, TimeSpan.FromMinutes(Math.Max(5, cfg.GetValue("Maintenance:IntervalMinutes", 1440)))) { }
+    protected override async Task RunForTenantAsync(IServiceProvider sp, Guid tenantId, CancellationToken ct)
+    {
+        var (forecasts, alerts) = await sp.GetRequiredService<MaintenanceService>().RunAsync(DateTime.UtcNow, ct);
+        if (forecasts > 0) Log.LogInformation("Maintenance: {Forecasts} forecasts, {Alerts} alert(s) for tenant {Tenant}", forecasts, alerts, tenantId);
+    }
+}
+
 public class HttpIntegrationTransport : IIntegrationTransport
 {
     private readonly HttpClient _http;

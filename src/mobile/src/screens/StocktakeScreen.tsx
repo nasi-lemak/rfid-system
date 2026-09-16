@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { FlatList, Pressable, ScrollView, Text, View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../../App';
 import { Api, type LocationRow, type StocktakeSummary } from '../api/client';
 import { useInventory, useReader } from '../reader';
 import { useSettings } from '../store/settings';
@@ -10,6 +13,7 @@ import { Badge, Button, C, Field, Loading, s, Stat } from '../ui';
  * count live and so nothing is lost if the handheld dies mid-count.
  */
 export default function StocktakeScreen() {
+  const nav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { reader } = useReader();
   const { settings } = useSettings();
   const [open, setOpen] = useState<{ summary: StocktakeSummary; location?: string }[] | null>(null);
@@ -53,7 +57,7 @@ export default function StocktakeScreen() {
         <Text style={s.muted}>{tags.size} tags read on device · {current.unknown} unknown</Text>
         {msg && <Text style={{ color: C.warn, marginVertical: 6 }}>{msg}</Text>}
         <View style={{ flex: 1 }} />
-        <Button title={scanning ? '■ Pause scanning' : '▶ Scan'} tone={scanning ? 'danger' : 'primary'} onPress={() => setScanning(!scanning)} style={{ marginBottom: 8 }} />
+        <View style={[s.row, { marginBottom: 8 }]}><Button title={scanning ? '■ Pause scanning' : '▶ Scan'} tone={scanning ? 'danger' : 'primary'} onPress={() => setScanning(!scanning)} style={{ flex: 1 }} /><Button title="📷 Barcode" onPress={() => nav.navigate('Barcode', { continuous: true, title: 'Scan item barcodes into the count', onScan: async (code) => { try { setCurrent(await Api.stocktakeScans(current.id, [code], settings.currentLocationId ?? undefined)); } catch (e) { setMsg((e as Error).message); } } })} /></View>
         <View style={s.row}><Button title="Leave open" onPress={() => { setScanning(false); setCurrent(null); load(); }} style={{ flex: 1 }} /><Button title="Finish & reconcile" tone="ok" onPress={finish} style={{ flex: 1 }} /></View>
       </View>
     );

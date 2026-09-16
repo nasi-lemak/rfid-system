@@ -1,10 +1,10 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { get, put } from '../api/client';
-import { useInvalidate, useLocations, useSave, useUserSites } from '../api/hooks';
+import { useInvalidate, useLocations, useParties, useSave, useUserSites } from '../api/hooks';
 import { Badge, ErrorBox, Modal, fmt } from '../components/ui';
 
-interface User { id: string; email: string; displayName: string; role: string; isActive: boolean; restrictToSites?: boolean; externalIssuer?: string | null; lastLoginAt?: string | null; siteCount?: number }
+interface User { id: string; email: string; displayName: string; role: string; isActive: boolean; restrictToSites?: boolean; externalIssuer?: string | null; lastLoginAt?: string | null; siteCount?: number; portalPartyId?: string | null }
 
 function SiteAccessEditor({ user, onClose }: { user: User; onClose: () => void }) {
   const current = useUserSites(user.id); const locs = useLocations(); const inv = useInvalidate();
@@ -31,6 +31,7 @@ function SiteAccessEditor({ user, onClose }: { user: User; onClose: () => void }
 
 export default function Users() {
   const { data } = useQuery({ queryKey: ['users'], queryFn: () => get<User[]>('/api/users') });
+  const parties = useParties();
   const save = useSave<User>('/api/users', ['users']);
   const [edit, setEdit] = useState<(Partial<User> & { password?: string }) | null>(null);
   const [sitesFor, setSitesFor] = useState<User | null>(null);
@@ -39,13 +40,14 @@ export default function Users() {
     <div>
       <div className="topbar"><h1>Users</h1><button className="primary" onClick={() => setEdit({ role: 'Operator', isActive: true })}>+ New user</button></div>
       <div className="panel table-wrap"><table><thead><tr><th>Email</th><th>Name</th><th>Role</th><th>Sites</th><th>Sign-in</th><th>Active</th><th></th></tr></thead>
-        <tbody>{data?.map((u) => <tr key={u.id}><td>{u.email}</td><td>{u.displayName}</td><td><Badge>{u.role}</Badge></td><td>{u.restrictToSites ? <Badge tone="info">{u.siteCount ?? 0} site(s)</Badge> : <span className="muted small">all</span>}</td><td className="small muted">{u.externalIssuer ? 'SSO' : 'password'}{u.lastLoginAt ? ` · ${fmt.ago(u.lastLoginAt)}` : ''}</td><td>{u.isActive ? '✓' : '—'}</td><td className="right"><button className="sm" onClick={() => setSitesFor(u)}>Sites</button> <button className="sm" onClick={() => setEdit(u)}>Edit</button></td></tr>)}</tbody></table></div>
+        <tbody>{data?.map((u) => <tr key={u.id}><td>{u.email}</td><td>{u.displayName}</td><td><Badge>{u.role}</Badge></td><td>{u.portalPartyId ? <Badge tone="warn">portal</Badge> : u.restrictToSites ? <Badge tone="info">{u.siteCount ?? 0} site(s)</Badge> : <span className="muted small">all</span>}</td><td className="small muted">{u.externalIssuer ? 'SSO' : 'password'}{u.lastLoginAt ? ` · ${fmt.ago(u.lastLoginAt)}` : ''}</td><td>{u.isActive ? '✓' : '—'}</td><td className="right"><button className="sm" onClick={() => setSitesFor(u)}>Sites</button> <button className="sm" onClick={() => setEdit(u)}>Edit</button></td></tr>)}</tbody></table></div>
       {sitesFor && <SiteAccessEditor user={sitesFor} onClose={() => setSitesFor(null)} />}
       {edit && <Modal title={edit.id ? 'Edit user' : 'New user'} onClose={() => setEdit(null)}>
         <form className="form" onSubmit={submit}>
           <label>Email *<input required type="email" value={edit.email ?? ''} onChange={(e) => setEdit({ ...edit, email: e.target.value })} /></label>
           <label>Display name *<input required value={edit.displayName ?? ''} onChange={(e) => setEdit({ ...edit, displayName: e.target.value })} /></label>
-          <label>Role<select value={edit.role} onChange={(e) => setEdit({ ...edit, role: e.target.value })}><option>Admin</option><option>Operator</option><option>Viewer</option></select></label>
+          <label>Role<select value={edit.role} disabled={!!edit.portalPartyId} onChange={(e) => setEdit({ ...edit, role: e.target.value })}><option>Admin</option><option>Operator</option><option>Viewer</option></select></label>
+          <label>Portal account for party (supplier / customer read-only portal)<select value={edit.portalPartyId ?? ''} onChange={(e) => setEdit({ ...edit, portalPartyId: e.target.value || null, role: e.target.value ? 'Viewer' : edit.role })}><option value="">— internal user —</option>{parties.data?.filter((p) => p.kind === 'Customer' || p.kind === 'Supplier' || p.kind === 'Department').map((p) => <option key={p.id} value={p.id}>{p.name} ({p.kind})</option>)}</select></label>
           <label>{edit.id ? 'New password (leave blank to keep)' : 'Password *'}<input type="password" required={!edit.id} value={edit.password ?? ''} onChange={(e) => setEdit({ ...edit, password: e.target.value })} /></label>
           <label className="row"><input type="checkbox" style={{ width: 'auto' }} checked={!!edit.isActive} onChange={(e) => setEdit({ ...edit, isActive: e.target.checked })} /> Active</label>
           <ErrorBox error={save.error} />

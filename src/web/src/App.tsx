@@ -33,11 +33,16 @@ import Analytics from './pages/Analytics';
 import Anomalies from './pages/Anomalies';
 import Encoding from './pages/Encoding';
 import Audit from './pages/Audit';
+import Billing from './pages/Billing';
+import Maintenance from './pages/Maintenance';
+import Epcis from './pages/Epcis';
+import Portal from './pages/Portal';
 
 export default function App() {
   const { user } = useAuth();
   if (!user && window.location.pathname === '/auth/callback') return <SsoCallback />;
   if (!user) return <Login />;
+  if (user.portalPartyId) return <Portal />;
   return (
     <Routes>
       <Route element={<Layout />}>
@@ -71,6 +76,9 @@ export default function App() {
         <Route path="anomalies" element={<Anomalies />} />
         <Route path="encoding" element={<Encoding />} />
         <Route path="audit" element={<Audit />} />
+        <Route path="billing" element={<Billing />} />
+        <Route path="maintenance" element={<Maintenance />} />
+        <Route path="epcis" element={<Epcis />} />
         <Route path="auth/callback" element={<Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

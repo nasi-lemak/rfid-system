@@ -210,9 +210,20 @@ shared through Redis when configured.
 | Web `i18n.tsx`, mobile `src/i18n` | String-keyed dictionaries with English fallback; language stored per browser/device |
 | Mobile `src/geo` | expo-location capture, fence geometry, GPS reporting per scanned EPC; `GeofenceScreen` |
 
+### v1.7 additions
+
+| Component | Role |
+|---|---|
+| `Gs1ElementString`, `TagResolver` (barcode fallback), `Tag.Symbology` | Parse GS1-128 / DataMatrix / Digital Link content, derive candidate EPCs per prefix length, resolve barcode tags and identifiers in the same pipeline as RFID |
+| `BillingService`, `RateCard`, `LedgerEntry`, `Invoice`, `BillingCursor` | Custody events → ledger by rate card (idempotent watermark); per-party balances; invoice generation and lifecycle; `BillingAccrualService` hourly |
+| `PortalScopeMiddleware`, `User.PortalPartyId`, `PortalController` | Party-scoped read-only API (`/api/portal/*`) and web portal UI; portal claims block the rest of the API |
+| `MaintenanceService`, `MaintenanceForecast` | Weighted, explainable risk score with predicted service date; daily snapshots and alerts (`MaintenanceForecastService`) |
+| `EpcisService`, `EpcisCapture` | EPCIS 2.0 JSON-LD mapping (CBV, URNs, SGLN, bizTransactions), simple event query, capture → reads/operations |
+| Mobile `BarcodeScanScreen` | expo-camera scanning used by Lookup, Operations, Stocktake and Commission |
+
 ## 7. Roadmap
-- Barcode/2D fallback scanning and hybrid RFID+barcode flows.
-- Returnable-asset deposit and billing (cycle-based invoicing).
-- Supplier/customer portals with scoped read-only access.
-- Predictive maintenance from inspection and usage history.
-- EPCIS 2.0 event capture/query interface.
+- Reader edge agents (containerised on-reader ingestion, store-and-forward).
+- Digital twin views per site (3D racks/zones).
+- Advanced RTLS (UWB TDoA, BLE AoA).
+- Workflow builder for guided handheld tasks.
+- Marketplace of vertical apps built on the templates.

@@ -16,6 +16,7 @@ import CommissionScreen from './src/screens/CommissionScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import FloorPlanScreen from './src/screens/FloorPlanScreen';
 import GeofenceScreen from './src/screens/GeofenceScreen';
+import BarcodeScanScreen from './src/screens/BarcodeScanScreen';
 import { LangContext, translate } from './src/i18n';
 import { C } from './src/ui';
 
@@ -29,6 +30,7 @@ export type RootStackParamList = {
   Commission: { epc?: string } | undefined;
   FloorPlan: { locationId?: string; itemId?: string } | undefined;
   Geofences: undefined;
+  Barcode: { onScan?: (code: string, type: string) => void; continuous?: boolean; title?: string } | undefined;
   Settings: undefined;
 };
 
@@ -58,6 +60,7 @@ export default function App() {
                 <Stack.Screen name="Operation" component={OperationScreen} options={{ title: 'Operation' }} />
                 <Stack.Screen name="Commission" component={CommissionScreen} options={{ title: 'Commission tags' }} />
                 <Stack.Screen name="FloorPlan" component={FloorPlanScreen} options={{ title: translate(settings.language ?? 'en', 'Floor plan') }} />
+                <Stack.Screen name="Barcode" component={BarcodeScanScreen} options={{ title: 'Barcode scan' }} />
                 <Stack.Screen name="Geofences" component={GeofenceScreen} options={{ title: translate(settings.language ?? 'en', 'Map & geofences') }} />
                 <Stack.Screen name="Settings" component={SettingsScreen} />
               </Stack.Navigator>

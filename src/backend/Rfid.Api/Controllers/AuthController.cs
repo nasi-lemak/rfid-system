@@ -38,7 +38,7 @@ public class AuthController : ControllerBase
         var tenant = await _db.Tenants.FindAsync(user.TenantId);
         var sites = user.RestrictToSites ? await _db.UserSiteAccess.IgnoreQueryFilters().Where(s => s.UserId == user.Id).ToListAsync() : new List<Rfid.Domain.Entities.UserSiteAccess>();
         user.LastLoginAt = DateTime.UtcNow; await _db.SaveChangesAsync();
-        return Ok(new { token = _jwt.IssueForUser(user, sites), user = new { user.Id, user.Email, user.DisplayName, Role = user.Role.ToString(), user.TenantId, TenantName = tenant?.Name, user.RestrictToSites, Sites = sites.Select(s => new { s.SiteLocationId, s.Role }) } });
+        return Ok(new { token = _jwt.IssueForUser(user, sites), user = new { user.Id, user.Email, user.DisplayName, Role = user.Role.ToString(), user.TenantId, TenantName = tenant?.Name, user.RestrictToSites, user.PortalPartyId, Sites = sites.Select(s => new { s.SiteLocationId, s.Role }) } });
     }
 
     /// <summary>Fixed readers and handhelds exchange their provisioning token for a JWT.</summary>
@@ -59,7 +59,7 @@ public class AuthController : ControllerBase
             var user = await _db.Users.FindAsync(uid);
             var (restricted, _, siteRoles) = PlatformClaims.Parse(User);
             var siteNames = restricted ? await _db.Locations.Where(l => siteRoles.Keys.Contains(l.Id)).ToDictionaryAsync(l => l.Id, l => l.Name) : new Dictionary<Guid, string>();
-            return Ok(new { user?.Id, user?.Email, user?.DisplayName, Role = user?.Role.ToString(), _ctx.TenantId, RestrictToSites = restricted, Sso = User.FindFirst("sso")?.Value,
+            return Ok(new { user?.Id, user?.Email, user?.DisplayName, Role = user?.Role.ToString(), _ctx.TenantId, RestrictToSites = restricted, Sso = User.FindFirst("sso")?.Value, user?.PortalPartyId,
                 Sites = siteRoles.Select(kv => new { SiteLocationId = kv.Key, SiteName = siteNames.GetValueOrDefault(kv.Key), Role = kv.Value.ToString() }) });
         }
         return Ok(new { _ctx.DeviceId, Role = "Device", _ctx.TenantId });

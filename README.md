@@ -192,8 +192,27 @@ See [`docs/INTEGRATION.md`](docs/INTEGRATION.md).
   fixes, sessions, heartbeats, logs, closed alerts…) run every 6 hours; item events stay forever
   unless you choose otherwise.
 
+## v1.7
+
+- **Barcode / 2D fallback & hybrid flows** — the handheld scans Code128, GS1-128, EAN/UPC, QR and
+  DataMatrix with the camera; codes resolve to items as bound barcode tags, GS1 element strings /
+  Digital Links (matched to SGTIN/SSCC/GRAI/GIAI tags), or plain identifiers, so one operation can
+  mix RFID reads and barcode scans (`GET /api/items/by-code/{code}`).
+- **Returnable-asset billing** — rate cards (deposit, cycle fee, daily rental after free days, late
+  and loss fees) turn custody events into a per-party ledger; periodic invoices with printable HTML,
+  issue / pay / void lifecycle and account balances.
+- **Supplier / customer portals** — users scoped to a party get a read-only portal: items in their
+  custody and history, due-back dates, activity, invoices and charges; the API refuses everything
+  else for portal logins.
+- **Predictive maintenance** — transparent risk score per item from cycle wear, inspection failures,
+  overdue inspections, service-interval drift, usage intensity, age and open alerts; predicted
+  service date from the dominant driver; daily snapshots, trends and alerts.
+- **EPCIS 2.0** — item events as EPCIS ObjectEvents/AggregationEvents (JSON-LD, CBV steps and
+  dispositions, EPC/SGLN URNs, business transactions) with the simple event query and a capture
+  endpoint that turns partner documents into reads and operations.
+
 ## Roadmap
 
-Barcode/2D fallback scanning and hybrid RFID+barcode flows · returnable-asset deposit and billing
-(cycle-based invoicing) · supplier/customer portals with scoped read-only access · predictive
-maintenance from inspection and usage history · EPCIS 2.0 event capture/query interface.
+Reader edge agents (containerised on-reader ingestion with store-and-forward) · digital twin views
+per site (3D racks/zones) · advanced RTLS (UWB TDoA, BLE AoA) · workflow builder for guided
+handheld tasks · marketplace of vertical apps built on the templates.

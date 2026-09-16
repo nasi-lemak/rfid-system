@@ -76,3 +76,7 @@ public enum AnomalyKind { ReadRateSpike, ReadRateDrop, OffHoursActivity, Unknown
 public enum AnomalyStatus { Open, Confirmed, Dismissed }
 
 public enum EpcScheme { Sgtin96, Sscc96, Grai96, Giai96 }
+
+public enum LedgerKind { Deposit, DepositRefund, CycleFee, DailyFee, LateFee, LossFee, Adjustment, Payment }
+
+public enum InvoiceStatus { Draft, Issued, Paid, Void }

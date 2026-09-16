@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
-import { useRoute, type RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
 import { Api, type ItemTypeRow } from '../api/client';
 import { useReader } from '../reader';
@@ -15,6 +16,7 @@ import { printLabel } from '../reader/Printer';
  */
 export default function CommissionScreen() {
   const route = useRoute<RouteProp<RootStackParamList, 'Commission'>>();
+  const nav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { reader } = useReader();
   const { settings } = useSettings();
   const [types, setTypes] = useState<ItemTypeRow[]>([]);
@@ -59,8 +61,8 @@ export default function CommissionScreen() {
     <ScrollView style={s.screen} keyboardShouldPersistTaps="handled">
       <View style={s.panel}>
         <Text style={s.h2}>1. Tag</Text>
-        <Field label="EPC in hand" value={epc} onChangeText={(v) => setEpc(v.toUpperCase())} autoCapitalize="characters" />
-        <Button small title={reading ? 'Reading…' : '📡 Read nearest tag'} onPress={() => setReading(true)} disabled={reading} style={{ marginTop: 8 }} />
+        <Field label="EPC or barcode in hand" value={epc} onChangeText={(v) => setEpc(v)} autoCapitalize="characters" />
+        <View style={[s.row, { marginTop: 8 }]}><Button small title={reading ? 'Reading…' : '📡 Read nearest tag'} onPress={() => setReading(true)} disabled={reading} /><Button small title="📷 Barcode instead" onPress={() => nav.navigate('Barcode', { title: 'Scan the barcode to bind', onScan: (code) => { setEpc(code); if (!identifier) setIdentifier(code); } })} /></View>
         <Field label="Encode new EPC (optional, hex, 24 chars for 96-bit)" value={newEpc} onChangeText={(v) => setNewEpc(v.toUpperCase())} autoCapitalize="characters" placeholder="e.g. 3034F8B2000001000000ABCD" />
         {pools.length > 0 && <View style={{ marginTop: 8 }}><Text style={s.muted}>Next EPC from a GS1 serial pool:</Text><Chips options={pools.filter((p) => !typeId || !p.itemTypeId || p.itemTypeId === typeId).map((p) => ({ value: p.id, label: `${p.name} (${p.scheme})` }))} value={null} onChange={allocate} /></View>}
         <Button small title="Write EPC to tag" onPress={encode} disabled={busy || !/^[0-9A-F]{8,64}$/.test(newEpc) || newEpc.length % 4 !== 0} style={{ marginTop: 8 }} />
@@ -75,7 +77,7 @@ export default function CommissionScreen() {
       </View>
       {msg && <Text style={{ color: msg.startsWith('✓') ? C.ok : C.warn, marginBottom: 10 }}>{msg}</Text>}
       {lastItemId && <Button title="🖨 Print label for last item" onPress={async () => { try { setMsg(await printLabel(lastItemId)); } catch (e) { setMsg((e as Error).message); } }} style={{ marginBottom: 8 }} />}
-      <Button title={busy ? 'Working…' : 'Commission'} tone="primary" onPress={commission} disabled={busy || !type || !/^[0-9A-F]{8,64}$/.test(epc) || (type?.attributeSchema.some((a) => a.required && !attrs[a.name]) ?? false)} />
+      <Button title={busy ? 'Working…' : 'Commission'} tone="primary" onPress={commission} disabled={busy || !type || epc.trim().length < 4 || (type?.attributeSchema.some((a) => a.required && !attrs[a.name]) ?? false)} />
     </ScrollView>
   );
 }

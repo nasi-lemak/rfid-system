@@ -25,6 +25,7 @@ public static class PlatformClaims
         yield return new Claim(ClaimTypes.Email, user.Email);
         yield return new Claim(ClaimTypes.Role, user.Role.ToString());
         yield return new Claim(Tenant, user.TenantId.ToString());
+        if (user.PortalPartyId is { } portal) yield return new Claim("portal", portal.ToString());
         if (!user.RestrictToSites) yield break;
         yield return new Claim(Restricted, "true");
         foreach (var s in sites) yield return new Claim(Site, $"{s.SiteLocationId:N}={s.Role}");

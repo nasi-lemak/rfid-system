@@ -46,6 +46,12 @@ public interface IAppDb
     DbSet<EncodingBatch> EncodingBatches { get; }
     DbSet<AuditEntry> AuditEntries { get; }
     DbSet<RetentionPolicy> RetentionPolicies { get; }
+    DbSet<RateCard> RateCards { get; }
+    DbSet<LedgerEntry> LedgerEntries { get; }
+    DbSet<Invoice> Invoices { get; }
+    DbSet<BillingCursor> BillingCursors { get; }
+    DbSet<MaintenanceForecast> MaintenanceForecasts { get; }
+    DbSet<EpcisCapture> EpcisCaptures { get; }
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }
 

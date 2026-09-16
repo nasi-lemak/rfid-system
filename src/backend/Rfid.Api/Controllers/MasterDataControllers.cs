@@ -270,15 +270,15 @@ public class UsersController : ControllerBase
     public UsersController(AppDbContext db, ICurrentContext ctx) { _db = db; _ctx = ctx; }
 
     [HttpGet]
-    public async Task<IActionResult> List() => Ok(await _db.Users.OrderBy(u => u.Email).Select(u => new { u.Id, u.Email, u.DisplayName, u.Role, u.IsActive, u.CreatedAt, u.RestrictToSites, u.ExternalIssuer, u.LastLoginAt, SiteCount = _db.UserSiteAccess.Count(s => s.UserId == u.Id) }).ToListAsync());
+    public async Task<IActionResult> List() => Ok(await _db.Users.OrderBy(u => u.Email).Select(u => new { u.Id, u.Email, u.DisplayName, u.Role, u.IsActive, u.CreatedAt, u.RestrictToSites, u.ExternalIssuer, u.LastLoginAt, u.PortalPartyId, SiteCount = _db.UserSiteAccess.Count(s => s.UserId == u.Id) }).ToListAsync());
 
-    public record UserWrite(string Email, string DisplayName, UserRole Role, string? Password, bool IsActive = true);
+    public record UserWrite(string Email, string DisplayName, UserRole Role, string? Password, bool IsActive = true, Guid? PortalPartyId = null);
 
     [HttpPost]
     public async Task<IActionResult> Create(UserWrite w)
     {
         if (string.IsNullOrEmpty(w.Password)) return BadRequest(new { error = "Password required" });
-        var u = new User { TenantId = _ctx.TenantId, Email = w.Email.ToLowerInvariant(), DisplayName = w.DisplayName, Role = w.Role, PasswordHash = PasswordHasher.Hash(w.Password), IsActive = w.IsActive };
+        var u = new User { TenantId = _ctx.TenantId, Email = w.Email.ToLowerInvariant(), DisplayName = w.DisplayName, Role = w.PortalPartyId.HasValue ? UserRole.Viewer : w.Role, PasswordHash = PasswordHasher.Hash(w.Password), IsActive = w.IsActive, PortalPartyId = w.PortalPartyId };
         _db.Users.Add(u); await _db.SaveChangesAsync();
         return Ok(new { u.Id, u.Email, u.DisplayName, u.Role, u.IsActive });
     }
@@ -287,7 +287,7 @@ public class UsersController : ControllerBase
     public async Task<IActionResult> Update(Guid id, UserWrite w)
     {
         var u = await _db.Users.FindAsync(id); if (u == null) return NotFound();
-        u.Email = w.Email.ToLowerInvariant(); u.DisplayName = w.DisplayName; u.Role = w.Role; u.IsActive = w.IsActive;
+        u.Email = w.Email.ToLowerInvariant(); u.DisplayName = w.DisplayName; u.Role = w.PortalPartyId.HasValue ? UserRole.Viewer : w.Role; u.IsActive = w.IsActive; u.PortalPartyId = w.PortalPartyId;
         if (!string.IsNullOrEmpty(w.Password)) u.PasswordHash = PasswordHasher.Hash(w.Password);
         await _db.SaveChangesAsync();
         return Ok(new { u.Id, u.Email, u.DisplayName, u.Role, u.IsActive });

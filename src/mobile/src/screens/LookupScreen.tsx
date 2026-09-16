@@ -41,7 +41,8 @@ export default function LookupScreen() {
 
   return (
     <ScrollView style={s.screen}>
-      <Field label="EPC" value={epc} onChangeText={(v) => setEpc(v.toUpperCase())} autoCapitalize="characters" placeholder="Scan or type" />
+      <Field label="EPC / barcode / identifier" value={epc} onChangeText={(v) => setEpc(v)} autoCapitalize="characters" placeholder="Scan or type" />
+      <Button small title="📷 Scan barcode" onPress={() => nav.navigate('Barcode', { title: 'Scan the item barcode', onScan: (code) => setEpc(code) })} style={{ marginBottom: 8 }} />
       <View style={[s.row, { marginVertical: 10 }]}><Button title={scanning ? 'Reading…' : '📡 Read nearest tag'} tone="primary" onPress={() => setScanning(true)} disabled={scanning} style={{ flex: 1 }} /></View>
       {busy && <Loading />}
       {error && <Text style={{ color: C.crit }}>{error}</Text>}

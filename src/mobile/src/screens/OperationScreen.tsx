@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, ScrollView, Text, View } from 'react-native';
-import { useRoute, type RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
 import { Api, type LocationRow, type OperationResult, type PartyRow } from '../api/client';
 import { useInventory, useReader } from '../reader';
@@ -19,6 +20,7 @@ const showState: OpType[] = ['ProcessStage', 'Inspect', 'Maintain'];
 /** Scan a set of tags, choose what happens to them, submit (queued when offline). */
 export default function OperationScreen() {
   const route = useRoute<RouteProp<RootStackParamList, 'Operation'>>();
+  const nav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { reader } = useReader();
   const { settings } = useSettings();
   const [type, setType] = useState<OpType>((route.params?.type as OpType) ?? 'Transfer');
@@ -74,6 +76,7 @@ export default function OperationScreen() {
       {showTo.includes(type) && <Pressable onPress={() => setPicker('to')} style={[s.panel, s.row, { justifyContent: 'space-between' }]}><Text style={s.muted}>{type === 'Return' || type === 'Unpack' ? 'Return to' : 'Destination'}{needsTo.includes(type) ? ' *' : ''}</Text><Text style={s.text}>{to?.name ?? 'choose…'}</Text></Pressable>}
       {showParty.includes(type) && <Pressable onPress={() => setPicker('party')} style={[s.panel, s.row, { justifyContent: 'space-between' }]}><Text style={s.muted}>Party{type === 'Issue' ? ' *' : ''}</Text><Text style={s.text}>{party?.name ?? 'choose…'}</Text></Pressable>}
       {type === 'Pack' && <Pressable onPress={() => setPicker('container')} style={[s.panel, s.row, { justifyContent: 'space-between' }]}><Text style={s.muted}>Container *</Text><Text style={s.text}>{container?.name ?? 'choose…'}</Text></Pressable>}
+      <Button small title={`📷 Scan barcodes (${extra.length} added)`} onPress={() => nav.navigate('Barcode', { continuous: true, title: 'Scan item barcodes', onScan: (code) => setExtra((prev) => (prev.includes(code) ? prev : [...prev, code])) })} style={{ marginBottom: 8 }} />
       {showState.includes(type) && <Field label="Target state" value={targetState} onChangeText={setTargetState} placeholder="e.g. InWash, Sterilised, Passed" />}
       {type === 'Adjust' && <Field label="Quantity delta *" value={qty} onChangeText={setQty} keyboardType="numbers-and-punctuation" placeholder="-5 or 20" />}
       <Field label="Reference" value={reference} onChangeText={setReference} placeholder="PO / work order / case…" />

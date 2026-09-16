@@ -80,6 +80,18 @@ public class ItemsController : ControllerBase
         return Ok(new { tag = new { tag.Id, tag.Epc, tag.Status }, item = item == null ? null : Dto.Item(item) });
     }
 
+    /// <summary>Resolves anything a scanner can produce – hex EPC, GS1-128/DataMatrix element string, GS1 Digital Link, barcode bound as a tag, or the item identifier.</summary>
+    [HttpGet("by-code/{code}")]
+    public async Task<IActionResult> ByCode(string code, [FromServices] TagResolver resolver)
+    {
+        var decoded = Uri.UnescapeDataString(code);
+        var tags = await resolver.ResolveAsync(new[] { decoded });
+        var describe = TagResolver.Describe(decoded);
+        if (!tags.TryGetValue(TagResolver.Normalize(decoded), out var tag)) return NotFound(new { error = "Unknown code", code = describe });
+        var item = tag.ItemId.HasValue ? await Base().FirstOrDefaultAsync(i => i.Id == tag.ItemId) : null;
+        return Ok(new { code = describe, tag = new { tag.Id, tag.Epc, tag.Status, tag.Technology, tag.Symbology }, item = item == null ? null : Dto.Item(item) });
+    }
+
     [HttpGet("{id:guid}/events")]
     public async Task<IActionResult> Events(Guid id, int take = 100)
     {
@@ -164,14 +176,14 @@ public class ItemsController : ControllerBase
         var epc = TagResolver.Normalize(body.Epc);
         var tag = await _db.Tags.FirstOrDefaultAsync(t => t.Epc == epc);
         if (tag?.ItemId != null && tag.ItemId != id) return Conflict(new { error = "EPC bound to another item" });
-        tag ??= new Tag { TenantId = _ctx.TenantId, Epc = epc, Technology = body.Technology ?? TagTechnology.UhfGen2 };
+        tag ??= new Tag { TenantId = _ctx.TenantId, Epc = epc, Technology = body.Technology ?? (TagResolver.IsHexEpc(epc) ? TagTechnology.UhfGen2 : TagTechnology.Barcode), Symbology = body.Symbology };
         tag.ItemId = id; tag.Tid = body.Tid ?? tag.Tid; tag.Status = TagStatus.Active; tag.EncodedAt = DateTime.UtcNow;
         if (_db.Entry(tag).State == EntityState.Detached) _db.Tags.Add(tag);
         _db.ItemEvents.Add(new ItemEvent { TenantId = _ctx.TenantId, ItemId = id, Type = ItemEventType.Commissioned, UserId = _ctx.UserId, Data = new() { ["epc"] = epc } });
         await _db.SaveChangesAsync();
         return Ok(new { tag.Id, tag.Epc, tag.Status });
     }
-    public record TagBind(string Epc, string? Tid, TagTechnology? Technology);
+    public record TagBind(string Epc, string? Tid, TagTechnology? Technology, string? Symbology = null);
 
     [HttpDelete("{id:guid}/tags/{tagId:guid}"), Authorize(Policy = "Operator")]
     public async Task<IActionResult> UnbindTag(Guid id, Guid tagId)

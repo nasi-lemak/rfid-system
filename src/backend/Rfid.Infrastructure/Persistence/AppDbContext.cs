@@ -54,6 +54,12 @@ public class AppDbContext : DbContext, IAppDb
     public DbSet<EncodingBatch> EncodingBatches => Set<EncodingBatch>();
     public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
     public DbSet<RetentionPolicy> RetentionPolicies => Set<RetentionPolicy>();
+    public DbSet<RateCard> RateCards => Set<RateCard>();
+    public DbSet<LedgerEntry> LedgerEntries => Set<LedgerEntry>();
+    public DbSet<Invoice> Invoices => Set<Invoice>();
+    public DbSet<BillingCursor> BillingCursors => Set<BillingCursor>();
+    public DbSet<MaintenanceForecast> MaintenanceForecasts => Set<MaintenanceForecast>();
+    public DbSet<EpcisCapture> EpcisCaptures => Set<EpcisCapture>();
 
     private Guid CurrentTenant => _ctx?.TenantId ?? Guid.Empty;
 
@@ -331,6 +337,21 @@ public class AppDbContext : DbContext, IAppDb
             e.HasIndex(a => new { a.TenantId, a.At }); e.HasIndex(a => new { a.TenantId, a.UserId, a.At }); e.HasIndex(a => new { a.EntityType, a.EntityId });
         });
         b.Entity<RetentionPolicy>(e => { e.ToTable("retention_policies"); e.HasIndex(p => new { p.TenantId, p.Dataset }).IsUnique(); });
+
+        b.Entity<RateCard>(e => { e.ToTable("rate_cards"); e.Property(r => r.PartyKind).HasConversion<string?>(); });
+        b.Entity<LedgerEntry>(e => { e.ToTable("ledger_entries"); e.Property(l => l.Kind).HasConversion<string>(); e.HasIndex(l => new { l.TenantId, l.PartyId, l.OccurredAt }); e.HasIndex(l => l.InvoiceId); });
+        b.Entity<Invoice>(e =>
+        {
+            e.ToTable("invoices"); e.Property(i => i.Status).HasConversion<string>(); e.HasIndex(i => new { i.TenantId, i.Number }).IsUnique();
+            e.Property(i => i.Lines).HasColumnType(isNpgsql ? "jsonb" : "text").HasConversion(JsonConv<List<InvoiceLine>>(json), JsonComparer<List<InvoiceLine>>());
+        });
+        b.Entity<BillingCursor>(e => { e.ToTable("billing_cursors"); e.HasIndex(c => c.TenantId).IsUnique(); });
+        b.Entity<MaintenanceForecast>(e =>
+        {
+            e.ToTable("maintenance_forecasts"); e.HasIndex(m => new { m.TenantId, m.ComputedAt }); e.HasIndex(m => m.ItemId);
+            e.Property(m => m.Factors).HasColumnType(isNpgsql ? "jsonb" : "text").HasConversion(JsonConv<Dictionary<string, object?>>(json), JsonComparer<Dictionary<string, object?>>());
+        });
+        b.Entity<EpcisCapture>(e => e.ToTable("epcis_captures"));
 
         b.Entity<SolutionTemplate>(e =>
         {

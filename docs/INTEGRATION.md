@@ -300,6 +300,50 @@ Settings → **GPS** enables `expo-location`; after a free scan or an online ope
 **Map & geofences** screen draws the cached fences around the device on a metre grid (no tiles
 needed) and flags restricted (Critical) zones.
 
+## Barcodes & hybrid flows
+
+Any scanner input works wherever an EPC is accepted (`epc` fields in reads, operations, stocktakes):
+hex EPCs are matched as tags; GS1-128 / DataMatrix element strings (`(01)…(21)…`, FNC1 payloads with
+symbology identifiers) and GS1 Digital Links are parsed and matched to SGTIN/SSCC/GRAI/GIAI tags across
+every company-prefix length; other strings match barcode tags (`technology: Barcode`, bound via
+`POST /api/items/{id}/tags` with `symbology`) or the item identifier. `GET /api/items/by-code/{code}`
+resolves a single code and `GET /api/tags/describe/{code}` explains what it is.
+
+## Returnable-asset billing
+
+Rate cards (`/api/billing/rate-cards`): `depositAmount`, `cycleFee` (per issue), `dailyFee` after
+`freeDays`, `lateFeePerDay` past the operation's `dueBackAt`, `lossFee` when disposed while in
+custody; scoped by party, party kind and/or item type (most specific wins). The hourly accrual
+(`POST /api/billing/accrue` to run now) writes `LedgerEntry` rows once per custody event.
+`POST /api/billing/invoices/generate { from, to, partyId?, dueDays }` creates draft invoices from
+unbilled entries; `POST /api/billing/invoices/{id}/issue|pay|void`; `GET …/print` returns HTML.
+`GET /api/billing/balances`, `GET /api/billing/ledger?partyId&unbilled`.
+
+## Supplier / customer portals
+
+Create a user with `portalPartyId` (Users page → *Portal account for party*). Their JWT carries a
+`portal` claim; the API only serves `/api/portal/*` (`me`, `items`, `activity`, `invoices`, `ledger`,
+`invoices/{id}/print`) and `/api/auth/*`, and the web app switches to the portal UI automatically.
+
+## Predictive maintenance
+
+`GET /api/maintenance/predictions?itemTypeId&minRisk` scores active items whose type has a cycle
+limit or inspection interval, or that have inspection/maintenance history. Factors (weights): cycle
+wear 30, inspection failures 25, inspection due 15, service-interval drift 15, usage intensity 10,
+open alerts 10, age 5. `Maintenance:AlertRisk` (70) raises one warning alert per item;
+`Maintenance:IntervalMinutes` (1440) snapshots forecasts for `GET /api/maintenance/predictions/{itemId}` trends.
+
+## EPCIS 2.0
+
+`GET /api/epcis/v2` (discovery), `GET /api/epcis/v2/events` with `EQ_bizStep`, `EQ_disposition`,
+`EQ_action`, `MATCH_epc`, `GE_eventTime`, `LT_eventTime`, `eventType`, `EQ_readPoint`, `perPage`,
+`page` (responds `application/ld+json` with `GS1-EPCIS-Version: 2.0`, `X-Total-Count` and a `Link`
+next page), `GET /api/epcis/v2/events/{eventId}`, `GET /api/epcis/v2/epcs/{epc}/events`,
+`POST /api/epcis/v2/capture` (EPCISDocument; OBSERVE → reads at the read point, receiving/shipping/
+destroying → Receive/Dispatch/Dispose operations at the bizLocation; 200 / 207 / 400) and
+`GET /api/epcis/v2/capture/{id}`. Give locations an `sgln` attribute to emit/accept
+`urn:epc:id:sgln:…` read points. Set `Epcis:BaseUrl` for the URIs used for locations, parties and items without GS1 keys.
+
 ## Template customisation
 
 `GET /api/templates/export` returns the tenant's item types, lifecycles and rules as a template
