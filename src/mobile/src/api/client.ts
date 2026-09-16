@@ -3,6 +3,13 @@ import { getSettings } from '../store/settings';
 
 export class ApiError extends Error { status: number; constructor(status: number, message: string) { super(message); this.status = status; } }
 
+/**
+ * Called when a request made *with* a stored token is answered 401 (expired or revoked session). The app uses it to
+ * sign the operator out with an explanation while keeping the offline queue intact.
+ */
+let unauthorizedHandler: (() => void) | null = null;
+export function setUnauthorizedHandler(h: (() => void) | null) { unauthorizedHandler = h; }
+
 export async function api<T = unknown>(path: string, init: { method?: string; json?: unknown; query?: Record<string, unknown>; timeoutMs?: number } = {}): Promise<T> {
   const s = await getSettings();
   const base = s.serverUrl.replace(/\/$/, '');
@@ -15,7 +22,11 @@ export async function api<T = unknown>(path: string, init: { method?: string; js
   const timer = setTimeout(() => controller.abort(), init.timeoutMs ?? 15000);
   try {
     const res = await fetch(url, { method: init.method ?? (init.json !== undefined ? 'POST' : 'GET'), headers, body: init.json !== undefined ? JSON.stringify(init.json) : undefined, signal: controller.signal });
-    if (!res.ok) { let msg = `${res.status} ${res.statusText}`; try { const j = await res.json(); msg = j.error ?? msg; } catch { /* ignore */ } throw new ApiError(res.status, msg); }
+    if (!res.ok) {
+      let msg = `${res.status} ${res.statusText}`; try { const j = await res.json(); msg = j.error ?? msg; } catch { /* ignore */ }
+      if (res.status === 401 && s.token) { msg = 'Your session has expired – sign in again'; unauthorizedHandler?.(); }
+      throw new ApiError(res.status, msg);
+    }
     const text = await res.text();
     if (!res.headers.get('content-type')?.includes('json')) return text as unknown as T;
     return (text ? JSON.parse(text) : undefined) as T;

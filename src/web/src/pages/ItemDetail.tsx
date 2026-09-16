@@ -35,7 +35,7 @@ export default function ItemDetail() {
     <div>
       <div className="topbar">
         <div><h1 style={{ marginBottom: 2 }}>{i.name}</h1><span className="muted">{i.itemType?.name} · {i.identifier}</span></div>
-        <div className="row">{quick.map((q) => <button key={q} className="sm" style={allowedOps.includes(q) ? { borderColor: 'var(--primary)', color: 'var(--primary)' } : undefined} onClick={() => setOp(q)}>{q}</button>)}</div>
+        <div className="row">{quick.map((q) => <button key={q} className="sm" style={allowedOps.includes(q) ? { borderColor: 'var(--primary)', color: 'var(--primary)' } : undefined} onClick={() => { if (q !== 'Dispose' || confirm(`Dispose ${i.name}? The item is retired and its tags released. This cannot be undone.`)) setOp(q); }}>{q}</button>)}</div>
       </div>
       <div className="grid cols-3">
         <div className="panel">

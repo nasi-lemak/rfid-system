@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { FlatList, Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, FlatList, Pressable, ScrollView, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
@@ -45,7 +45,12 @@ export default function StocktakeScreen() {
   const start = async (locationId: string, locName: string) => {
     try { const st = await Api.createStocktake(name || `${locName} ${new Date().toLocaleDateString()}`, locationId); setCurrent(st); sent.current.clear(); clear(); } catch (e) { setMsg((e as Error).message); }
   };
-  const finish = async () => { if (!current) return; setScanning(false); try { const r = await Api.stocktakeReconcile(current.id); setMsg(`Reconciled: ${r.found} found, ${r.missing} missing, ${r.unexpected} unexpected. Apply the result from the web app.`); setCurrent(null); load(); } catch (e) { setMsg((e as Error).message); } };
+  const finish = () => {
+    if (!current) return;
+    const notSeen = current.expected - current.found;
+    Alert.alert('Finish this count?', `${notSeen} expected item(s) have not been seen and will be marked missing in this stocktake. A supervisor applies the result on the web.`, [{ text: 'Keep counting', style: 'cancel' }, { text: 'Finish & reconcile', style: 'destructive', onPress: () => { void doFinish(); } }]);
+  };
+  const doFinish = async () => { if (!current) return; setScanning(false); try { const r = await Api.stocktakeReconcile(current.id); setMsg(`Reconciled: ${r.found} found, ${r.missing} missing, ${r.unexpected} unexpected. Apply the result from the web app.`); setCurrent(null); load(); } catch (e) { setMsg((e as Error).message); } };
 
   if (current) {
     const pct = current.expected ? Math.round((current.found / current.expected) * 100) : 0;

@@ -5,7 +5,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
 import { useReader } from '../reader';
 import { useSettings } from '../store/settings';
-import { readQueue, sync } from '../store/queue';
+import { readQueue, readRejected, sync } from '../store/queue';
 import { Badge, Button, C, s } from '../ui';
 import { useT } from '../i18n';
 
@@ -27,8 +27,9 @@ export default function HomeScreen() {
   const { status, error, reconnect } = useReader();
   const { settings } = useSettings();
   const [queued, setQueued] = useState(0);
+  const [rejected, setRejected] = useState(0);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
-  const refresh = useCallback(() => { readQueue().then((q) => setQueued(q.length)); }, []);
+  const refresh = useCallback(() => { readQueue().then((q) => setQueued(q.length)); readRejected().then((r) => setRejected(r.length)); }, []);
   useFocusEffect(refresh);
   useEffect(() => { if (queued > 0) sync().then((r) => { if (r.sent) setSyncMsg(`Synced ${r.sent} queued operation(s)`); refresh(); }); }, [queued, refresh]);
   const tone = status === 'ready' || status === 'inventory' || status === 'locating' ? 'ok' : status === 'error' ? 'crit' : 'warn';
@@ -39,7 +40,8 @@ export default function HomeScreen() {
         <View style={{ alignItems: 'flex-end', gap: 4 }}><Badge tone={tone}>{status}</Badge>{status === 'error' && <Button small title="Retry" onPress={reconnect} />}</View>
       </View>
       {error && <Text style={{ color: C.warn, marginBottom: 8 }}>{error}</Text>}
-      {queued > 0 && <View style={[s.panel, s.row, { justifyContent: 'space-between', borderColor: C.warn }]}><Text style={s.text}>{queued} operation(s) waiting to sync</Text><Button small title="Sync now" onPress={() => sync().then((r) => { setSyncMsg(`Sent ${r.sent}, ${r.remaining} remaining`); refresh(); })} /></View>}
+      {queued > 0 && <View style={[s.panel, s.row, { justifyContent: 'space-between', borderColor: C.warn }]}><Text style={s.text}>{queued} operation(s) waiting to sync</Text><Button small title="Sync now" onPress={() => sync(true).then((r) => { setSyncMsg(r.unauthorized ? 'Sign in again to sync' : `Sent ${r.sent}, ${r.remaining} remaining${r.failed ? `, ${r.failed} rejected` : ''}`); refresh(); })} /></View>}
+      {rejected > 0 && <Pressable onPress={() => nav.navigate('Settings')} style={[s.panel, s.row, { justifyContent: 'space-between', borderColor: C.crit }]}><Text style={s.text}>{rejected} operation(s) rejected on sync</Text><Text style={[s.muted, { color: C.crit }]}>Review in Settings ›</Text></Pressable>}
       {syncMsg && <Text style={[s.muted, { marginBottom: 8 }]}>{syncMsg}</Text>}
       {tiles.map((t) => (
         <Pressable key={t.to} onPress={() => nav.navigate(t.to as never)} style={({ pressed }) => [s.panel, s.row, { opacity: pressed ? 0.7 : 1 }]}>

@@ -13,6 +13,7 @@ muster, livestock — built from one set of primitives plus **solution templates
 | Handheld | React Native (Expo SDK 57), reader abstraction (Zebra / Chainway / BLE / simulated), offline queue | `src/mobile` |
 | Edge agent | .NET 8 worker: LLRP + vendor pushes → durable on-disk queue → store-and-forward | `src/backend/Rfid.Edge` (`Dockerfile.edge`, compose profile `edge`) |
 | Docs | Architecture, data model, vertical → primitive mapping, handheld SDK notes | `docs/` |
+| UX docs | Roles, setup journey, handheld and offline model, screen inventory, vertical journeys, gap analysis | [`docs/ux/`](docs/ux/README.md) |
 
 ## How one platform covers ~90 systems
 
@@ -40,7 +41,9 @@ centre, aircraft hangar tool crib, hospital linen service, evidence store, libra
 brewery & plant hire, gearbox line, campus & 10K race, farm, museum, hotel, central kitchen & cold
 chain, vehicle depot & MRO, waste depot, airport baggage hall, data centre, offshore supply base,
 school & events — 279 tagged items across 24 sites, 71 readers and several days of replayed history (154 operations, ~1,900 reads) that raise the verticals' own alerts.
-Control it with `Seed__Scenarios=all|none|<comma list>`; load a single vertical into any tenant later
+Control it with `Seed__Scenarios=all|none|<comma list>` (default `all` in the Development environment and in
+`docker compose`, `none` everywhere else — **set `SEED_SCENARIOS=none` / `Seed__Scenarios=none` for a real
+tenant**, otherwise it starts full of demo sites); load a single vertical into any tenant later
 with **Load demo data** on the *Solution templates* page (`POST /api/templates/{code}/demo`).
 
 ## Quick start (local dev)

@@ -32,6 +32,8 @@ services:
       Cors__Origins__1: "http://localhost:5173"
       Seed__AdminEmail: "${ADMIN_EMAIL:-admin@demo.local}"
       Seed__AdminPassword: "${ADMIN_PASSWORD:-admin123}"
+      # all = every vertical's demo site (evaluation); none = empty tenant for a real deployment
+      Seed__Scenarios: "${SEED_SCENARIOS:-all}"
     volumes: [ "warehouse:/warehouse" ]
     ports: [ "5080:8080" ]
 

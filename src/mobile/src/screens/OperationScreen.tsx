@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FlatList, Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, FlatList, Pressable, ScrollView, Text, View } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
@@ -56,7 +56,15 @@ export default function OperationScreen() {
   useEffect(() => reader.onTrigger((p) => setScanning(p)), [reader]);
   const epcs = useMemo(() => [...new Set([...extra, ...tags.keys()])], [extra, tags]);
 
-  const submit = async () => {
+  const submit = () => {
+    // Dispose retires the items and releases their tags: irreversible, so it is the one operation that asks first.
+    if (def.baseType === 'Dispose') {
+      Alert.alert(`Dispose ${epcs.length} item(s)?`, 'The items are retired and their tags released. This cannot be undone.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Dispose', style: 'destructive', onPress: () => { void doSubmit(); } }]);
+      return;
+    }
+    void doSubmit();
+  };
+  const doSubmit = async () => {
     setBusy(true); setMsg(null); setResult(null);
     try {
       const req: Record<string, unknown> = { type: def.baseType, operation: def.code, toLocationId: to?.id, partyId: party?.id, containerItemId: container?.id, targetState: targetState || undefined, reference: reference || undefined, lines: epcs.map((epc) => ({ epc, quantity: qty ? Number(qty) : undefined })) };

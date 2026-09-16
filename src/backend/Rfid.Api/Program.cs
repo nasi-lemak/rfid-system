@@ -192,7 +192,9 @@ using (var scope = app.Services.CreateScope())
     if (cfg.GetValue("Database:Seed", true))
     {
         var results = await SeedData.EnsureSeededAsync(scope.ServiceProvider.GetRequiredService<DbContextOptions<AppDbContext>>(),
-            cfg["Seed:AdminEmail"] ?? "admin@demo.local", cfg["Seed:AdminPassword"] ?? "admin123", cfg["Seed:Scenarios"] ?? "all");
+            cfg["Seed:AdminEmail"] ?? "admin@demo.local", cfg["Seed:AdminPassword"] ?? "admin123",
+            // Demo scenarios fill the tenant with 23 sites of sample data: only by default in Development; a real deployment opts in with Seed:Scenarios.
+            cfg["Seed:Scenarios"] ?? (app.Environment.IsDevelopment() ? "all" : "none"));
         var log = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
         foreach (var r in results.Where(r => !r.Skipped))
             log.LogInformation("Seeded scenario {Scenario}: {Items} items, {Ops} operations, {Reads} reads, {Alerts} alerts{Warn}", r.Scenario, r.Items, r.Operations, r.Reads, r.Alerts, r.Warnings.Count > 0 ? " · warnings: " + string.Join("; ", r.Warnings) : "");

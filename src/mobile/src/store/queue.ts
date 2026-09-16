@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Api } from '../api/client';
+import { Api, ApiError } from '../api/client';
 
 /**
  * Offline-first, store-and-forward queue for operations.
@@ -51,7 +51,9 @@ export async function runOrQueue(request: Record<string, unknown>) {
     return { online: true as const, result };
   } catch (e) {
     const err = e as { status?: number; message: string };
-    if (err.status && err.status >= 400 && err.status < 500) throw e; // business error, don't queue
+    // A business error (4xx) is shown, not queued. 401 is the exception: the session expired, the work is still
+    // valid, so it waits in the queue for the operator to sign in again.
+    if (err.status && err.status >= 400 && err.status < 500 && err.status !== 401) throw e;
     const q = await readQueue();
     q.push({ clientId: req.clientId, createdAt: req.occurredAt, request: req, attempts: 1, lastError: err.message, nextAttemptAt: new Date(Date.now() + backoffMs(1)).toISOString() });
     await writeQueue(q);
@@ -59,7 +61,7 @@ export async function runOrQueue(request: Record<string, unknown>) {
   }
 }
 
-export interface SyncResult { sent: number; failed: number; remaining: number; deferred: number }
+export interface SyncResult { sent: number; failed: number; remaining: number; deferred: number; unauthorized?: boolean }
 
 /**
  * Flush the queue in FIFO batches. `force` ignores per-item backoff (manual "Sync now").
@@ -76,8 +78,10 @@ export async function sync(force = false): Promise<SyncResult> {
   let sent = 0, failed = 0;
   const rejected = await readRejected();
   const remaining: QueuedOperation[] = [...deferred];
+  let unauthorized = false;
   for (let i = 0; i < due.length; i += BATCH_SIZE) {
     const chunk = due.slice(i, i + BATCH_SIZE);
+    if (unauthorized) { remaining.push(...chunk); continue; } // session expired: keep everything untouched until re-login
     try {
       const results = await Api.operationBatch(chunk.map((o) => o.request));
       const byId = new Map<string, { clientId?: string; ok: boolean; error?: string }>();
@@ -89,6 +93,7 @@ export async function sync(force = false): Promise<SyncResult> {
         remaining.push(retryLater(o, 'No result for this operation in the batch response'));
       }
     } catch (e) {
+      if (e instanceof ApiError && e.status === 401) { unauthorized = true; remaining.push(...chunk); continue; } // not an attempt: nothing was tried on the operator's behalf
       const msg = (e as Error).message;
       for (const o of chunk) remaining.push(retryLater(o, msg));
     }
@@ -102,7 +107,7 @@ export async function sync(force = false): Promise<SyncResult> {
   kept.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   await writeQueue(kept);
   await writeRejected(rejected);
-  return { sent, failed, remaining: kept.length, deferred: deferred.length };
+  return { sent, failed, remaining: kept.length, deferred: deferred.length, unauthorized };
 }
 
 function retryLater(o: QueuedOperation, error: string): QueuedOperation {

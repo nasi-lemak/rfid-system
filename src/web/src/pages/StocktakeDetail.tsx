@@ -20,8 +20,8 @@ export default function StocktakeDetail() {
         <div><h1 style={{ marginBottom: 2 }}>{s.name}</h1><span className="muted">{data.location} · started {fmt.dt(data.startedAt)}</span></div>
         <div className="row">
           <Badge tone={toneForStatus(s.status)}>{s.status}</Badge>
-          {s.status === 'Open' && <><button onClick={() => act.mutate('cancel')}>Cancel</button><button className="primary" onClick={() => act.mutate('reconcile')}>Reconcile</button></>}
-          {s.status === 'Reconciled' && <button className="primary" onClick={() => act.mutate('apply')} title="Flag missing items and move unexpected items into this location">Apply result</button>}
+          {s.status === 'Open' && <><button onClick={() => { if (confirm(`Cancel this stocktake? ${s.found} scan result(s) are kept for reference but nothing is applied to the items.`)) act.mutate('cancel'); }}>Cancel</button><button className="primary" onClick={() => act.mutate('reconcile')}>Reconcile</button></>}
+          {s.status === 'Reconciled' && <button className="primary" onClick={() => { if (confirm(`Apply this result? ${s.missing} item(s) will be flagged Missing and ${s.unexpected} unexpected item(s) moved into ${data.location}. Rules and alerts fire on these changes.`)) act.mutate('apply'); }} title="Flag missing items and move unexpected items into this location">Apply result</button>}
         </div>
       </div>
       <div className="grid cols-4" style={{ marginBottom: 16 }}>

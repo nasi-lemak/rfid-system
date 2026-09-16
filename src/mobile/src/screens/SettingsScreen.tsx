@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { FlatList, Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, FlatList, Pressable, ScrollView, Text, View } from 'react-native';
 import { Api, clearCache, type LocationRow } from '../api/client';
 import { useReader } from '../reader';
 import type { ReaderKind } from '../reader/types';
 import { SimulatedReader } from '../reader/SimulatedReader';
-import { clearQueue, readQueue, sync } from '../store/queue';
+import { clearQueue, clearRejected, readQueue, readRejected, sync, type RejectedOperation } from '../store/queue';
 import { useSettings } from '../store/settings';
 import { Badge, Button, C, Chips, Field, s } from '../ui';
 import { LANGS, useT } from '../i18n';
@@ -17,9 +17,11 @@ export default function SettingsScreen() {
   const [printers, setPrinters] = useState<{ id: string; name: string }[]>([]);
   const [filter, setFilter] = useState('');
   const [queue, setQueue] = useState(0);
+  const [rejected, setRejected] = useState<RejectedOperation[]>([]);
+  const refreshQueue = () => { readQueue().then((q) => setQueue(q.length)); readRejected().then(setRejected); };
   const [msg, setMsg] = useState<string | null>(null);
   const [power, setPower] = useState(String(settings.power));
-  useEffect(() => { Api.locations().then(setLocations).catch(() => {}); readQueue().then((q) => setQueue(q.length)); Api.devices().then((d) => setPrinters(d.filter((x) => x.kind === 'Printer').map((x) => ({ id: x.id, name: x.name })))).catch(() => {}); }, []);
+  useEffect(() => { Api.locations().then(setLocations).catch(() => {}); refreshQueue(); Api.devices().then((d) => setPrinters(d.filter((x) => x.kind === 'Printer').map((x) => ({ id: x.id, name: x.name })))).catch(() => {}); }, []);
 
   const seedSimulator = async () => {
     if (!(reader instanceof SimulatedReader)) return;
@@ -53,7 +55,24 @@ export default function SettingsScreen() {
       <View style={s.panel}>
         <Text style={s.h2}>Offline queue</Text>
         <Text style={s.text}>{queue} pending operation(s)</Text>
-        <View style={[s.row, { marginTop: 8 }]}><Button small title="Sync now" onPress={() => sync().then((r) => { setMsg(`Sent ${r.sent}, ${r.remaining} remaining`); readQueue().then((q) => setQueue(q.length)); })} /><Button small tone="danger" title="Discard queue" onPress={() => clearQueue().then(() => setQueue(0))} /></View>
+        <View style={[s.row, { marginTop: 8 }]}>
+          <Button small title="Sync now" onPress={() => sync(true).then((r) => { setMsg(r.unauthorized ? 'Sign in again to sync' : `Sent ${r.sent}, ${r.remaining} remaining${r.failed ? `, ${r.failed} rejected` : ''}`); refreshQueue(); })} />
+          <Button small tone="danger" title="Discard queue" disabled={queue === 0} onPress={() => Alert.alert(`Discard ${queue} pending operation(s)?`, 'They were never received by the server and cannot be recovered.', [{ text: 'Keep', style: 'cancel' }, { text: 'Discard', style: 'destructive', onPress: () => { void clearQueue().then(refreshQueue); } }])} />
+        </View>
+        {rejected.length > 0 && (
+          <View style={{ marginTop: 12 }}>
+            <Text style={[s.text, { color: C.warn, fontWeight: '700' }]}>{rejected.length} operation(s) rejected on sync</Text>
+            <Text style={s.muted}>The server refused these when the queue was sent, or delivery gave up. They were not recorded – redo the work if it still applies.</Text>
+            {rejected.slice().reverse().slice(0, 20).map((r) => (
+              <View key={r.clientId} style={{ paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: C.border }}>
+                <Text style={s.text}>{String(r.request.operation ?? r.request.type ?? 'Operation')} · {Array.isArray(r.request.lines) ? `${(r.request.lines as unknown[]).length} tag(s)` : ''} · {new Date(r.createdAt).toLocaleString()}</Text>
+                <Text style={[s.muted, { color: C.warn }]}>{r.error}</Text>
+              </View>
+            ))}
+            {rejected.length > 20 && <Text style={s.muted}>… and {rejected.length - 20} older</Text>}
+            <Button small title="Clear rejected list" onPress={() => Alert.alert('Clear the rejected list?', 'The list is only a record on this device; clearing it does not change anything on the server.', [{ text: 'Keep', style: 'cancel' }, { text: 'Clear', style: 'destructive', onPress: () => { void clearRejected().then(refreshQueue); } }])} style={{ marginTop: 8, alignSelf: 'flex-start' }} />
+          </View>
+        )}
       </View>
       <View style={s.panel}>
         <Text style={s.h2}>Offline data</Text>
@@ -72,7 +91,7 @@ export default function SettingsScreen() {
       <View style={s.panel}>
         <Text style={s.h2}>Account</Text>
         <Text style={s.text}>{settings.userName} @ {settings.serverUrl}</Text>
-        <Button title={t('Sign out')} tone="danger" onPress={() => update({ token: null, userName: null })} style={{ marginTop: 10 }} />
+        <Button title={t('Sign out')} tone="danger" onPress={() => Alert.alert(t('Sign out'), queue > 0 ? `${queue} operation(s) have not been sent yet. They stay on this device and sync after the next sign-in.` : 'You will need your credentials or a device token to sign in again.', [{ text: 'Cancel', style: 'cancel' }, { text: t('Sign out'), style: 'destructive', onPress: () => { void update({ token: null, userName: null, sessionExpired: false }); } }])} style={{ marginTop: 10 }} />
       </View>
       {msg && <Text style={[s.muted, { marginBottom: 20 }]}>{msg}</Text>}
     </ScrollView>

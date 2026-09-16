@@ -4,6 +4,7 @@ import { DarkTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ReaderProvider } from './src/reader';
+import { setUnauthorizedHandler } from './src/api/client';
 import { SettingsContext, defaultSettings, getSettings, saveSettings, type Settings } from './src/store/settings';
 import LoginScreen from './src/screens/LoginScreen';
 import HomeScreen from './src/screens/HomeScreen';
@@ -46,6 +47,8 @@ export default function App() {
   const [loaded, setLoaded] = useState(false);
   useEffect(() => { getSettings().then((s) => { setSettings(s); setLoaded(true); }); }, []);
   const update = useCallback(async (patch: Partial<Settings>) => setSettings(await saveSettings(patch)), []);
+  // Expired/revoked session: back to the login screen with an explanation. The offline queue is untouched and drains after re-login.
+  useEffect(() => { setUnauthorizedHandler(() => { void update({ token: null, sessionExpired: true }); }); return () => setUnauthorizedHandler(null); }, [update]);
   const ctx = useMemo(() => ({ settings, update, loaded }), [settings, update, loaded]);
   return (
     <SafeAreaProvider>

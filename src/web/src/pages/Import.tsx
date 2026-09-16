@@ -23,7 +23,7 @@ export default function Import() {
   const reconcile = async () => { setBusy(true); setError(null); setResult(null); try { setRec(await post<ReconcileResult>('/api/import/reconcile', body())); } catch (e) { setError(e); } finally { setBusy(false); } };
   return (
     <div>
-      <div className="topbar"><h1>ERP import & reconciliation</h1><div className="row"><button onClick={reconcile} disabled={busy}>Reconcile (read-only)</button><button onClick={() => run(true)} disabled={busy}>Dry run</button><button className="primary" onClick={() => run(false)} disabled={busy}>Import</button></div></div>
+      <div className="topbar"><h1>ERP import & reconciliation</h1><div className="row"><button onClick={reconcile} disabled={busy}>Reconcile (read-only)</button><button onClick={() => run(true)} disabled={busy}>Dry run</button><button className="primary" onClick={() => { if (confirm('Import now? Items are created or updated for real. Use Dry run first to preview the result.')) run(false); }} disabled={busy}>Import</button></div></div>
       <p className="muted small">Paste an ERP/EAM/CMDB extract as CSV (header row; columns like AssetNumber/Identifier, Description/Name, AssetClass/Type, Location, Owner/Custodian, AcquisitionValue/Cost, CapitalizationDate/PurchasedAt, EPC, Quantity, Lot, Expiry — unknown columns become attributes) or a JSON array. Items are matched by identifier. Scripted feeds can POST the same CSV to <code>/api/import/items/csv</code>.</p>
       <div className="grid" style={{ gridTemplateColumns: '1fr 300px' }}>
         <div className="panel"><textarea className="mono" rows={14} value={text} onChange={(e) => setText(e.target.value)} /></div>
