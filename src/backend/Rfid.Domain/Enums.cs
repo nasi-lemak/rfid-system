@@ -26,7 +26,9 @@ public enum AntennaDirection { None, In, Out }
 public enum OperationType
 {
     Receive, Transfer, Issue, Return, Count, Dispatch, Inspect, Maintain, Dispose,
-    Pack, Unpack, ProcessStage, Commission, Adjust
+    Pack, Unpack, ProcessStage, Commission, Adjust,
+    /// <summary>Quantity items: move part of a lot to another location (split/merge lot rows).</summary>
+    MoveQuantity
 }
 
 public enum OperationStatus { Draft, Completed, Cancelled }

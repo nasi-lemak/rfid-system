@@ -64,10 +64,13 @@ builder.Services.AddScoped<RuleEngine>(sp => new RuleEngine(sp.GetRequiredServic
 builder.Services.AddScoped<Rfid.Application.Operations.OperationDefinitions>();
 builder.Services.AddScoped<OperationProcessor>();
 builder.Services.AddScoped<Rfid.Application.Operations.WorkflowService>();
+builder.Services.AddScoped<Rfid.Application.Inventory.StockService>();
 builder.Services.AddScoped<Rfid.Application.Devices.EdgeConfigService>();
 builder.Services.AddScoped<StocktakeService>();
 builder.Services.AddScoped<ReadIngestionService>();
 builder.Services.AddScoped<TemplateProvisioner>();
+builder.Services.AddSingleton(cfg.GetSection("Templates").Get<Rfid.Application.Templates.TemplateSigningOptions>() ?? new Rfid.Application.Templates.TemplateSigningOptions());
+builder.Services.AddSingleton<Rfid.Application.Templates.TemplatePackageService>();
 builder.Services.AddScoped<PresenceService>();
 builder.Services.AddScoped<ReportService>();
 builder.Services.AddScoped<StocktakeScheduleService>();

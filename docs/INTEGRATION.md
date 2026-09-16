@@ -145,6 +145,16 @@ options and a content `revision`; the agent reconnects only readers whose option
 the last configuration on disk for offline restarts. Administrators can inspect a gateway's
 configuration with `GET /api/edge/config?gatewayId=…`.
 
+## Stock (quantity items)
+
+`GET /api/stock/summary` (on hand, reorder point, shortfall, 30-day consumption, days of cover,
+expiry per item type), `GET /api/stock/balances?itemTypeId&locationId` (per type / location / lot),
+`GET /api/stock/movements?days&itemTypeId` (quantity events), `POST /api/stock/allocate
+{lines:[{itemTypeCode|itemTypeId, quantity, lotNumber?}], fromLocationId?, fefo}` (pick suggestion,
+earliest expiry first). Balances are computed from item rows — there is no separate ledger to drift.
+Execute picks with the `MoveQuantity` operation (`toLocationId`, per-line `quantity`), `Adjust` or
+`Dispatch`.
+
 ## Rules: schedules and operations
 
 Rules have a `kind`. **Event** rules react to one item event (trigger = event type). **Schedule**
@@ -442,6 +452,18 @@ next page), `GET /api/epcis/v2/events/{eventId}`, `GET /api/epcis/v2/epcs/{epc}/
 destroying → Receive/Dispatch/Dispose operations at the bizLocation; 200 / 207 / 400) and
 `GET /api/epcis/v2/capture/{id}`. Give locations an `sgln` attribute to emit/accept
 `urn:epc:id:sgln:…` read points. Set `Epcis:BaseUrl` for the URIs used for locations, parties and items without GS1 keys.
+
+## Template packages and signing
+
+`GET /api/templates/export?code&name&vertical&version&author` returns a **template package**:
+`{formatVersion, code, name, vertical, description, version, author, exportedAt, definition, signature?}`.
+When `Templates:Signing {keyId, privateKeyPem}` is configured the package is signed (RSA-SHA256 over
+the canonical JSON of identity + version + definition). `POST /api/templates/import` accepts a package
+(or a bare definition) and verifies it against `Templates:TrustedPublishers [{keyId, name,
+publicKeyPem}]`; the response reports `signature.status` (Valid, Unsigned, Untrusted, Invalid).
+With `Templates:RequireSignature: true` only packages with a valid trusted signature are imported;
+an invalid signature is always refused. `POST /api/templates/verify` checks without importing;
+`GET /api/templates/publishers` shows the policy.
 
 ## Template customisation
 

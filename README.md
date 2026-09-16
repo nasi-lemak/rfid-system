@@ -283,6 +283,15 @@ decisions and the re-assessed roadmap are in
   vision engines and an edge agent, idempotent by batch, updating items like the built-in solver.
 - **Edge MQTT bridge** — the agent can subscribe to an on-site broker so MQTT readers survive WAN loss.
 
+## v2.4 — stock module and signed template packages
+
+- **Stock (WMS core)** — balances per type/location/lot, replenishment summary (reorder point,
+  shortfall, days of cover, expiry), quantity movements and FEFO pick allocation, all computed from
+  quantity-item rows; a new `MoveQuantity` operation splits and merges lot rows between bins. Web
+  *Stock* page under Track.
+- **Template packages** — export produces a versioned package, signed with RSA when a signing key is
+  configured; imports verify against trusted publishers and can require a valid signature.
+
 ## Roadmap
 
 Re-assessed from first principles in [`docs/ARCHITECTURE-REVIEW.md`](docs/ARCHITECTURE-REVIEW.md) §7.

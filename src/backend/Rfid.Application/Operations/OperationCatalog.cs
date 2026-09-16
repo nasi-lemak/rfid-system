@@ -30,6 +30,7 @@ public static class OperationCatalog
         OperationType.ProcessStage => new() { ["bizStep"] = "transforming", ["disposition"] = "active" },
         OperationType.Commission => new() { ["bizStep"] = "commissioning", ["disposition"] = "active" },
         OperationType.Adjust => new() { ["bizStep"] = "stock_taking", ["disposition"] = "in_progress" },
+        OperationType.MoveQuantity => new() { ["bizStep"] = "storing", ["disposition"] = "in_progress" },
         _ => new(),
     };
 
@@ -49,6 +50,7 @@ public static class OperationCatalog
         D(OperationType.ProcessStage, "Process stage", "Advance the lifecycle to the target state; optionally move", ItemEventType.StateChanged, new(), E(SetState, ("free", true)), E(Move, ("optional", true))),
         D(OperationType.Commission, "Commission", "Create/bind items to tags", ItemEventType.Commissioned, new()),
         D(OperationType.Adjust, "Adjust", "Change a quantity item's stock by a delta", ItemEventType.QuantityChanged, new() { Quantity = true }, E(AdjustQuantity)),
+        D(OperationType.MoveQuantity, "Move quantity", "Move part of a quantity item (lot/SKU) to another location: the destination lot row is created or topped up", ItemEventType.QuantityChanged, new() { ToLocation = true, Quantity = true }, E(MoveQuantity)),
     };
 
     public static OperationDefinition? Get(string code) => BuiltIn.FirstOrDefault(d => string.Equals(d.Code, code, StringComparison.OrdinalIgnoreCase));
@@ -66,6 +68,7 @@ public static class OperationCatalog
         if (d.Effects.Count == 0) errors.Add("At least one effect is required");
         if (d.Effects.Any(e => e.Kind == Pack) && !d.Requires.Container) errors.Add("Pack requires a container");
         if (d.Effects.Any(e => e.Kind == AdjustQuantity) && !d.Requires.Quantity) errors.Add("AdjustQuantity requires a quantity");
+        if (d.Effects.Any(e => e.Kind == MoveQuantity) && !(d.Requires.Quantity && d.Requires.ToLocation)) errors.Add("MoveQuantity requires a quantity and a destination");
         if (d.Effects.Any(e => e.Kind == SetCustodian && !IsOptional(e)) && !d.Requires.Party) errors.Add("SetCustodian requires a party unless optional");
         return errors;
     }

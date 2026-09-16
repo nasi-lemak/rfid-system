@@ -177,6 +177,13 @@ Writing a new scenario is declarative — see the `Scenario` record in `DemoMode
 seed data are caught at build time.
 
 
+## Packages and publishers
+
+A template leaves and enters a deployment as a **package**: identity, semantic version, author, the
+definition (item types, rules, operations, workflows) and an optional RSA-SHA256 signature. Deployments
+list the publishers they trust; imports report the signature status and can be restricted to trusted,
+signed packages. This is the exchange format a marketplace of vertical templates builds on.
+
 ## Template-defined operations
 
 Since v2.0 a template can define **operations**, not only list the built-ins it uses. An

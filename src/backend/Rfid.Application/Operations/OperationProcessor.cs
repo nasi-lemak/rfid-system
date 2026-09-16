@@ -228,6 +228,32 @@ public class OperationProcessor
                 item.Quantity += lineReq.Quantity.Value;
                 if (item.Quantity < 0) throw new DomainException("Quantity cannot go negative");
                 break;
+            case MoveQuantity:
+            {
+                if (item.ItemType?.Category != ItemCategory.Quantity) throw new DomainException($"{item.Name} is not a quantity item");
+                if (lineReq.Quantity is not > 0) throw new DomainException($"{c.Def.Name} requires a positive quantity");
+                if (c.To == null) throw new DomainException($"{c.Def.Name} requires a destination location");
+                var q = lineReq.Quantity.Value;
+                if (q > item.Quantity) throw new DomainException($"Only {item.Quantity} {item.Unit} of {item.Name} available at the source");
+                if (item.CurrentLocationId == c.To.Id) throw new DomainException($"{item.Name} is already at {c.To.Name}");
+                // The destination lot row: same type, lot and expiry, not disposed, not inside a container.
+                var target = _db.Items.Local.FirstOrDefault(i => i.Id != item.Id && i.ItemTypeId == item.ItemTypeId && i.CurrentLocationId == c.To.Id && i.LotNumber == item.LotNumber && i.ExpiryDate == item.ExpiryDate && i.Status != ItemStatus.Disposed && i.ParentItemId == null)
+                    ?? await _db.Items.Include(i => i.ItemType).FirstOrDefaultAsync(i => i.Id != item.Id && i.ItemTypeId == item.ItemTypeId && i.CurrentLocationId == c.To.Id && i.LotNumber == item.LotNumber && i.ExpiryDate == item.ExpiryDate && i.Status != ItemStatus.Disposed && i.ParentItemId == null, ct);
+                if (target == null)
+                {
+                    target = new Item
+                    {
+                        TenantId = _ctx.TenantId, ItemTypeId = item.ItemTypeId, ItemType = item.ItemType, Identifier = await UniqueIdentifierAsync($"{item.Identifier}@{c.To.Code ?? c.To.Name}", ct), Name = item.Name,
+                        Quantity = 0, Unit = item.Unit, LotNumber = item.LotNumber, ExpiryDate = item.ExpiryDate, State = item.State, Status = ItemStatus.Active, CurrentLocationId = c.To.Id, CurrentLocation = c.To,
+                        Attributes = new Dictionary<string, object?>(item.Attributes), Cost = item.Cost, LastSeenAt = c.Now, LastSeenLocationId = c.To.Id,
+                    };
+                    _db.Items.Add(target);
+                }
+                item.Quantity -= q; target.Quantity += q; target.LastSeenAt = c.Now;
+                data["delta"] = -q; data["before"] = item.Quantity + q; data["toItemId"] = target.Id; data["toLocationId"] = c.To.Id; data["transfer"] = true;
+                await AddEventAsync(new ItemEvent { ItemId = target.Id, Type = ItemEventType.QuantityChanged, FromLocationId = item.CurrentLocationId, ToLocationId = c.To.Id, OperationId = c.Op.Id, DeviceId = c.Op.DeviceId, OccurredAt = c.Now, Data = new() { ["delta"] = q, ["before"] = target.Quantity - q, ["fromItemId"] = item.Id, ["fromLocationId"] = item.CurrentLocationId, ["transfer"] = true } }, target, item.CurrentLocation, c.To, null, ct);
+                break;
+            }
             case SetAttribute:
             {
                 var key = Str(e, "key") ?? throw new DomainException("SetAttribute needs a key");
@@ -249,6 +275,18 @@ public class OperationProcessor
             }
             default: throw new DomainException($"Unknown effect '{e.Kind}' in operation {c.Def.Code}");
         }
+    }
+
+    /// <summary>First free identifier among base, base-2, base-3 … (checks pending inserts too).</summary>
+    private async Task<string> UniqueIdentifierAsync(string baseId, CancellationToken ct)
+    {
+        for (var n = 1; n < 1000; n++)
+        {
+            var candidate = n == 1 ? baseId : $"{baseId}-{n}";
+            if (_db.Items.Local.Any(i => i.Identifier == candidate)) continue;
+            if (!await _db.Items.AnyAsync(i => i.Identifier == candidate, ct)) return candidate;
+        }
+        throw new DomainException($"Cannot allocate an identifier for {baseId}");
     }
 
     private async Task<Item> CommissionAsync(OperationLineRequest lineReq, string? epc, Dictionary<string, Tag> tagMap, Location? to, DateTime now, Operation op, CancellationToken ct)

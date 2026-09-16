@@ -396,7 +396,11 @@ operations, no engine) and the first part of **7.8** (desired reader configurati
 edge agent), plus site filtering for presence and positions. v2.3 closed the rest of §8 (site scoping for
 reports/dashboards/analytics via `SiteScope`, line-table isolation, edge MQTT bridge) and delivered
 the **7.7** position-ingest contract for vendor RTLS engines and **7.10** query-model consolidation
-(one scoped query model behind `/api/dashboard`, widgets, reports and analytics).
+(one scoped query model behind `/api/dashboard`, widgets, reports and analytics). v2.4 delivered
+**7.4** as a module (stock balances/allocation computed over quantity items plus the `MoveQuantity`
+effect, no separate ledger) and the exchange format for **7.12** (versioned, RSA-signed template
+packages with trusted publishers). Remaining long-term items: 3D twin view (7.9), native partitioning
+(7.13), device groups/certificate rotation (7.8 part 2), a marketplace UI over the package format.
 
 ### Ordering recommendation
 

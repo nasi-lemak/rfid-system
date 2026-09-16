@@ -37,6 +37,7 @@ const builtIn: Record<string, Partial<OperationDefinition['requires']> & { effec
   ProcessStage: { effects: ['SetState', 'Move'], description: 'Advance items through their lifecycle (wash stage, sterilisation, production step).' },
   Commission: { effects: [], description: 'Bind a new EPC to a new or existing item.' },
   Adjust: { quantity: true, effects: ['AdjustQuantity'], description: 'Change quantity by a delta (consumption, receipt of bulk stock).' },
+  MoveQuantity: { toLocation: true, quantity: true, effects: ['MoveQuantity'], description: 'Move part of a lot/SKU to another location; the destination lot row is created or topped up.' },
 };
 
 export function fallbackDefinition(code: string): OperationDefinition {

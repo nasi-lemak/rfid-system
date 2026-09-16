@@ -283,16 +283,33 @@ public class VendorIngestController : ControllerBase
 [ApiController, Route("api/templates"), Authorize(Policy = "Admin")]
 public class TemplateExchangeController : ControllerBase
 {
-    private readonly TemplateProvisioner _prov;
-    public TemplateExchangeController(TemplateProvisioner prov) => _prov = prov;
+    private readonly TemplateProvisioner _prov; private readonly TemplatePackageService _packages;
+    public TemplateExchangeController(TemplateProvisioner prov, TemplatePackageService packages) { _prov = prov; _packages = packages; }
 
-    /// <summary>Exports the tenant's item types and rules as a template definition JSON.</summary>
+    /// <summary>Exports the tenant's configuration (item types, rules, operations, workflows) as a template package; signed when a signing key is configured.</summary>
     [HttpGet("export")]
-    public async Task<IActionResult> Export(CancellationToken ct) => Ok(new { code = "custom", name = "Exported configuration", vertical = "Custom", exportedAt = DateTime.UtcNow, definition = await _prov.ExportAsync(ct) });
+    public async Task<IActionResult> Export(string code = "custom", string name = "Exported configuration", string vertical = "Custom", string version = "1.0.0", string? author = null, string? description = null, CancellationToken ct = default)
+    {
+        var pkg = new TemplatePackage { Code = code, Name = name, Vertical = vertical, Version = version, Author = author, Description = description ?? "", Definition = await _prov.ExportAsync(ct) };
+        if (_packages.CanSign) _packages.Sign(pkg);
+        return Ok(pkg);
+    }
 
-    public record ImportRequest(string? Code, string? Vertical, TemplateDefinition Definition);
+    /// <summary>Signature policy and trusted publishers (what an import will accept).</summary>
+    [HttpGet("publishers")]
+    public IActionResult Publishers([FromServices] TemplateSigningOptions o) => Ok(new { requireSignature = o.RequireSignature, canSign = _packages.CanSign, publishers = o.TrustedPublishers.Select(t => new { t.KeyId, t.Name }) });
 
-    /// <summary>Imports a template definition (as produced by export) into the tenant; existing codes/names are skipped.</summary>
+    /// <summary>Verifies a package without importing it.</summary>
+    [HttpPost("verify")]
+    public IActionResult Verify(TemplatePackage pkg) => Ok(new { signature = _packages.Verify(pkg), accepted = _packages.Accept(_packages.Verify(pkg)) });
+
+    /// <summary>Imports a template package (or a bare definition as older exports produced) into the tenant; existing codes/names are skipped. Signature policy applies.</summary>
     [HttpPost("import")]
-    public async Task<IActionResult> Import(ImportRequest r, CancellationToken ct) => Ok(await _prov.ApplyDefinitionAsync(r.Code ?? "custom", r.Vertical ?? "Custom", r.Definition, ct));
+    public async Task<IActionResult> Import(TemplatePackage pkg, CancellationToken ct)
+    {
+        var check = _packages.Verify(pkg);
+        if (!_packages.Accept(check)) return BadRequest(new { error = $"Package rejected: {check.Reason}", signature = check });
+        var result = await _prov.ApplyDefinitionAsync(string.IsNullOrWhiteSpace(pkg.Code) ? "custom" : pkg.Code, string.IsNullOrWhiteSpace(pkg.Vertical) ? "Custom" : pkg.Vertical, pkg.Definition, ct);
+        return Ok(new { result.Template, result.ItemTypesCreated, result.RulesCreated, result.OperationsCreated, result.WorkflowsCreated, result.Skipped, signature = check, pkg.Version, pkg.Author });
+    }
 }

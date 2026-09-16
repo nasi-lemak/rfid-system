@@ -147,5 +147,6 @@ public static class OperationEffectKinds
     public const string Unpack = "Unpack";                 // parent = null, optional move
     public const string AdjustQuantity = "AdjustQuantity"; // quantity += line quantity (never below zero)
     public const string SetAttribute = "SetAttribute";     // attributes[params.key] = params.value ?? request targetState
-    public static readonly string[] All = { Move, SetCustodian, ClearCustodian, SetDueBack, ClearDueBack, SetState, IncrementCycle, RecordSeen, RecordInspection, Activate, Dispose, Pack, Unpack, AdjustQuantity, SetAttribute };
+    public const string MoveQuantity = "MoveQuantity";     // quantity items: line quantity leaves this lot row and lands on the matching lot row at the destination (created if absent)
+    public static readonly string[] All = { Move, SetCustodian, ClearCustodian, SetDueBack, ClearDueBack, SetState, IncrementCycle, RecordSeen, RecordInspection, Activate, Dispose, Pack, Unpack, AdjustQuantity, SetAttribute, MoveQuantity };
 }

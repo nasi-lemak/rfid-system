@@ -58,12 +58,13 @@ for historical services); **folders declare ownership**:
 | `Devices/` | Reader health, firmware, edge configuration (protocol clients live in `Rfid.Protocols`) | `DeviceHealthService`, `LlrpDeviceConfig`, `EdgeConfigService` |
 | `Encoding/` | GS1 encoding, serial pools, labels, print queue | `EncodingService`, `LabelService`, `LabelDesign`, `PrintQueueService` |
 | `Integrations/` | Outbound ERP/BI delivery (via the outbox), EPCIS, warehouse export | `IntegrationService`, `IntegrationOutboxHandler`, `PayloadFormatters`, `EpcisService`, `WarehouseExportService` |
+| `Inventory/` | Warehouse view over quantity items: balances, replenishment, movements, FEFO allocation (no separate ledger) | `StockService` |
 | `Billing/` | Custody events → ledger → invoices | `BillingService` |
 | `Analytics/` | Dashboards (widgets + overview), reports, analytics, maintenance forecasting — all over `SiteScope` | `DashboardService`, `ReportService`, `AnalyticsService`, `MaintenanceService` |
 | `Geo/` | GPS fixes and geofences | `GeoService` |
 | `Platform/` | Cross-cutting infrastructure | `Outbox`, `OutboxDispatcher` + `IOutboxHandler`, `LeaseService`, `RetentionService` |
 | `Security/` | Site-level access, SSO mapping, hashing | `ISiteAccess`/`SiteAccess`, `SsoUserMapper`, `PasswordHasher` |
-| `Templates/` | Vertical catalogue and provisioning | `SolutionTemplateCatalog`, `TemplateProvisioner` |
+| `Templates/` | Vertical catalogue, provisioning, signed exchange packages | `SolutionTemplateCatalog`, `TemplateProvisioner`, `TemplatePackageService` |
 
 Dependency direction: `Tracking`, `Operations` and `Rules` are the core and depend only on
 `Contracts`/`Platform`. Every other folder depends on the core, never the reverse.
@@ -125,7 +126,9 @@ OperationDefinition {
 
 The **effect vocabulary is closed** (`OperationEffectKinds`): `Move`, `SetCustodian`,
 `ClearCustodian`, `SetDueBack`, `ClearDueBack`, `SetState`, `IncrementCycle`, `RecordSeen`,
-`RecordInspection`, `Activate`, `Dispose`, `Pack`, `Unpack`, `AdjustQuantity`, `SetAttribute`.
+`RecordInspection`, `Activate`, `Dispose`, `Pack`, `Unpack`, `AdjustQuantity`, `SetAttribute`,
+`MoveQuantity` (quantity items: the line quantity leaves this lot row and lands on the matching lot
+row at the destination, created if absent — the split/merge primitive a warehouse needs).
 Each effect is implemented once in `OperationProcessor.RunEffectAsync` and tested once.
 Effects flagged `optional` are skipped when their input (destination, party) is absent instead
 of failing. `SetAttribute` values may use the placeholders `{now}`, `{user}`, `{party}`,
