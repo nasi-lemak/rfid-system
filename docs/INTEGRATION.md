@@ -8,7 +8,7 @@ for a JWT at `POST /api/auth/device {"token": "..."}`. Handhelds may also use a 
 | Source | How |
 |---|---|
 | Handheld app | `POST /api/operations` (business transactions), `POST /api/ingest/handheld` (free-scan sightings), `POST /api/stocktakes/{id}/scans` |
-| Any reader / edge agent | `POST /api/ingest/reads` `{deviceId?, sessionId?, reads:[{epc, tid?, antennaPort?, rssi?, readAt?, locationId?}]}` |
+| Any reader / edge agent | `POST /api/ingest/reads` `{deviceId?, sessionId?, batchId?, reads:[{epc, tid?, antennaPort?, rssi?, readAt?, locationId?}]}` — send a monotonically increasing `batchId` per device for store-and-forward: a replayed batch is acknowledged (`duplicate: true`) and not re-applied |
 | Impinj R700 (IoT Interface) | Point the reader's HTTP POST / webhook at `POST /api/ingest/impinj?deviceId=<id>` — `tagInventoryEvent` payloads (single or array) are accepted as-is (`epcHex` or base64 `epc`, `peakRssiCdbm`, `antennaPort`, `tidHex`, `timestamp`) |
 | Zebra FX7500 / FX9600 (IoT Connector) | HTTP POST endpoint → `POST /api/ingest/zebra?deviceId=<id>` (`data.idHex`, `antenna`, `peakRssi`, `TID`) |
 | Anything else that can POST JSON | `POST /api/ingest/generic` — `{reads:[…]}`, `[…]`, a single read object, or an array of EPC strings; fields `epc/epcHex/idHex/tag/id`, `rssi/peakRssi`, `antennaPort/antenna/port`, `readAt/timestamp/time` |
@@ -52,6 +52,26 @@ exit too.
 - `GET /api/presence/timing?eventLocationId=` — checkpoint splits & ranking (locations of kind `Checkpoint`, ordered by attribute `order`)
 - `GET /api/presence/items/{itemId}` — an item's session history (dwell analytics)
 - `GET /api/reports/dwell` — dwell report
+
+## Delivery guarantees (outbox)
+
+Every external side effect — SignalR `event`/`alert` pushes, rule webhooks and notification
+channel deliveries — is written to the `outbox` table in the same database commit as the state
+change that caused it and delivered afterwards by a single dispatcher with exponential back-off
+(8 attempts, then dead-lettered with the error kept). Consumers therefore never see state that
+was rolled back, and a slow or failing endpoint never blocks an operation. Cursor-based
+integration endpoints (below) are at-least-once by design; de-duplicate on `eventId`.
+
+## Operation definitions
+
+`GET /api/operations/definitions` lists every operation a tenant can run: the 14 built-ins plus
+template- or tenant-defined ones (e.g. `Sterilise`, `Calibrate`). Each carries `requires`
+(which inputs are mandatory) and `effects` (the built-in effects it composes), which is how the
+web and handheld forms decide what to ask for. Run one with `POST /api/operations
+{operation: "Sterilise", lines: [...]}` (`type` is still accepted for built-ins). Administrators
+manage custom definitions with `POST/PUT/DELETE /api/operations/definitions`;
+`GET /api/operations/definitions/effects` returns the closed effect vocabulary. History records
+`definitionCode` on each operation.
 
 ## Outbound: ERP / EAM / BI / webhooks
 
@@ -128,8 +148,9 @@ pressing a button.
   with placeholders `{name} {identifier} {epc} {type} {location} {state} {lot} {expiry} {attributes.x}`.
 - `POST /api/labels/print {itemIds, printerDeviceId, template?}` → sends ZPL to a `Printer` device
   (`Config.host`, `Config.port` default 9100) — Zebra ZT411R / ZD621R and compatible RFID printers.
-- `POST /api/tags/encode {scheme: "SGTIN-96"|"GRAI-96"|"GIAI-96", companyPrefix, reference?, serial, filter?}`
-  and `GET /api/tags/decode-any/{epc}`.
+- Encoding and decoding live under `/api/encoding/*` (batches, serial pools, `GET /api/encoding/decode/{epc}`)
+  and `GET /api/tags/describe/{code}` for anything a scanner produces. The older
+  `/api/tags/encode*` and `/api/tags/decode*` endpoints were removed in v2.0.
 
 ### Label designer
 
@@ -169,6 +190,11 @@ default 30). Endpoints:
 | `GET /api/positions/heatmap?locationId&from&to&cellM=1` | Dwell seconds per grid cell (`cells[]: ix, iy, x, y, samples, seconds, items`) |
 | `GET /api/positions/history?itemId&from&to` | Ordered fixes for one item (path replay) |
 | `GET /api/positions/history/items?locationId&from&to` | Items with recorded paths in a floor plan |
+
+## Login
+
+`POST /api/auth/login {email, password, tenantCode?}`. `tenantCode` is only needed when the same
+e-mail exists in more than one tenant; without it such a login is refused as ambiguous.
 
 ## Single sign-on (OIDC)
 

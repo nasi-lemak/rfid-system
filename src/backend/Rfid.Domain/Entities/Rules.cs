@@ -60,4 +60,6 @@ public class TemplateDefinition
     public List<LocationKind> LocationKinds { get; set; } = new();
     public List<OperationType> Operations { get; set; } = new();
     public List<PartyKind> PartyKinds { get; set; } = new();
+    /// <summary>Vertical-specific operations composed from built-in effects (installed per tenant when the template is applied).</summary>
+    public List<OperationDefinition> OperationDefinitions { get; set; } = new();
 }

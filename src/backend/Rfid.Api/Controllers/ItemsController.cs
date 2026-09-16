@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Rfid.Application.Contracts;
+using Rfid.Application.Operations;
 using Rfid.Application.Security;
 using Rfid.Application.Services;
 using Rfid.Domain;
@@ -69,16 +70,9 @@ public class ItemsController : ControllerBase
         return Ok(new { item = Dto.Item(item), children });
     }
 
+    /// <summary>Kept for handheld compatibility; same resolution path as <c>by-code</c>.</summary>
     [HttpGet("by-epc/{epc}")]
-    public async Task<IActionResult> ByEpc(string epc)
-    {
-        var e = TagResolver.Normalize(epc);
-        var tag = await _db.Tags.FirstOrDefaultAsync(t => t.Epc == e);
-        if (tag == null) return NotFound(new { error = "Unknown tag", epc = e });
-        if (tag.ItemId == null) return Ok(new { tag = new { tag.Id, tag.Epc, tag.Status }, item = (object?)null });
-        var item = await Base().FirstOrDefaultAsync(i => i.Id == tag.ItemId);
-        return Ok(new { tag = new { tag.Id, tag.Epc, tag.Status }, item = item == null ? null : Dto.Item(item) });
-    }
+    public Task<IActionResult> ByEpc(string epc, [FromServices] TagResolver resolver) => ByCode(epc, resolver);
 
     /// <summary>Resolves anything a scanner can produce – hex EPC, GS1-128/DataMatrix element string, GS1 Digital Link, barcode bound as a tag, or the item identifier.</summary>
     [HttpGet("by-code/{code}")]
@@ -156,7 +150,15 @@ public class ItemsController : ControllerBase
         if (item == null) return NotFound();
         var prevLoc = item.CurrentLocationId; var prevParty = item.CustodianPartyId; var prevState = item.State;
         item.Name = w.Name; item.Identifier = w.Identifier;
-        if (w.State != null) item.State = w.State;
+        if (w.State != null)
+        {
+            if (item.ItemType.Lifecycle != null && !item.ItemType.Lifecycle.IsValidState(w.State)) return BadRequest(new { error = $"'{w.State}' is not a state of {item.ItemType.Name}", states = item.ItemType.Lifecycle.States });
+            item.State = w.State;
+        }
+        if (w.ParentItemId.HasValue && w.ParentItemId != item.ParentItemId)
+        {
+            if (w.ParentItemId == item.Id || await ContainerRules.IsDescendantAsync(_db, w.ParentItemId.Value, item.Id)) return BadRequest(new { error = "A container cannot be placed inside itself or one of its contents" });
+        }
         item.CurrentLocationId = w.CurrentLocationId; item.CustodianPartyId = w.CustodianPartyId; item.ParentItemId = w.ParentItemId;
         if (w.Quantity.HasValue) item.Quantity = w.Quantity.Value;
         item.LotNumber = w.LotNumber; item.ExpiryDate = w.ExpiryDate; item.Cost = w.Cost; item.PurchasedAt = w.PurchasedAt;

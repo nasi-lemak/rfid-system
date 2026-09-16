@@ -27,13 +27,23 @@ public class AuthController : ControllerBase
         return Ok(new { PasswordLogin = true, Sso = enabled ? new { o.Authority, o.ClientId, o.Scopes, o.Audience } : null });
     }
 
-    public record LoginRequest(string Email, string Password);
+    /// <summary>TenantCode disambiguates an e-mail that exists in more than one tenant (optional otherwise).</summary>
+    public record LoginRequest(string Email, string Password, string? TenantCode = null);
     public record DeviceLoginRequest(string Token);
 
     [HttpPost("login"), AllowAnonymous]
     public async Task<IActionResult> Login(LoginRequest req)
     {
-        var user = await _db.Users.IgnoreQueryFilters().FirstOrDefaultAsync(u => u.Email == req.Email.ToLowerInvariant() && u.IsActive);
+        var email = req.Email.Trim().ToLowerInvariant();
+        var candidates = await _db.Users.IgnoreQueryFilters().Where(u => u.Email == email && u.IsActive).Take(3).ToListAsync();
+        if (!string.IsNullOrWhiteSpace(req.TenantCode))
+        {
+            var code = req.TenantCode.Trim();
+            var tenantIds = await _db.Tenants.Where(t => t.Code == code).Select(t => t.Id).ToListAsync();
+            candidates = candidates.Where(u => tenantIds.Contains(u.TenantId)).ToList();
+        }
+        if (candidates.Count > 1) return Unauthorized(new { error = "This e-mail exists in more than one tenant; supply tenantCode", ambiguous = true });
+        var user = candidates.SingleOrDefault();
         if (user == null || !PasswordHasher.Verify(req.Password, user.PasswordHash)) return Unauthorized(new { error = "Invalid credentials" });
         var tenant = await _db.Tenants.FindAsync(user.TenantId);
         var sites = user.RestrictToSites ? await _db.UserSiteAccess.IgnoreQueryFilters().Where(s => s.UserId == user.Id).ToListAsync() : new List<Rfid.Domain.Entities.UserSiteAccess>();

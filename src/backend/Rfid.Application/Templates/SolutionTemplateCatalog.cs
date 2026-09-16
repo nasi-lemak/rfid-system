@@ -16,6 +16,14 @@ public static class SolutionTemplateCatalog
         Transitions = tr.Select(t => new LifecycleTransition { From = t.from, To = t.to, On = t.on, IncrementCycle = t.cycle }).ToList(),
     };
     private static (string, string, string, bool) T(string from, string to, OperationType on, bool cycle = false) => (from, to, on.ToString(), cycle);
+    /// <summary>Transition keyed by a template-defined operation code (see <see cref="Op"/>).</summary>
+    private static (string, string, string, bool) T(string from, string to, string on, bool cycle = false) => (from, to, on, cycle);
+    private static OperationEffect Fx(string kind, params (string k, object? v)[] p) => new(kind, p.ToDictionary(x => x.k, x => x.v));
+    /// <summary>A vertical operation: a named composition of built-in effects, installed as configuration when the template is applied.</summary>
+    private static OperationDefinition Op(string code, string name, string description, OperationType baseType, ItemEventType? ev, OperationRequirements? req, string[]? itemTypes, params OperationEffect[] effects) => new()
+    {
+        Code = code, Name = name, Description = description, BaseType = baseType, EventType = ev, Requires = req ?? new(), Effects = effects.ToList(), ItemTypeCodes = itemTypes?.ToList() ?? new(), Enabled = true,
+    };
     private static RuleCondition C(string field, string op, object? value) => new() { Field = field, Op = op, Value = value };
     private static Rule Alert(string name, ItemEventType trigger, Severity sev, string message, params RuleCondition[] conds) => new()
     {
@@ -102,6 +110,11 @@ public static class SolutionTemplateCatalog
                             T("InCrib", "CheckedOut", OperationType.Issue), T("CheckedOut", "InCrib", OperationType.Return), T("*", "UnderRepair", OperationType.Maintain), T("UnderRepair", "InCrib", OperationType.Return), T("*", "Retired", OperationType.Dispose)) },
                     new ItemType { Name = "Tool Kit", Code = "TOOL-KIT", IsContainer = true },
                 },
+                OperationDefinitions =
+                {
+                    Op("Calibrate", "Calibrate", "Record a calibration: inspection result plus the 'calibrated' flag", OperationType.Inspect, ItemEventType.Inspected, null, new[] { "TOOL" },
+                        Fx(OperationEffectKinds.RecordInspection), Fx(OperationEffectKinds.SetAttribute, ("key", "calibrated"), ("value", true)), Fx(OperationEffectKinds.SetAttribute, ("key", "calibratedAt"), ("value", "{now}"))),
+                },
                 Rules =
                 {
                     Alert("Tool overdue", ItemEventType.Seen, Severity.Warning, "{item.name} is overdue for return", C("item.overdue", "eq", true)),
@@ -173,8 +186,18 @@ public static class SolutionTemplateCatalog
                             T("Clean", "InUse", OperationType.Issue), T("InUse", "Dirty", OperationType.Return), T("Dirty", "Cleaning", OperationType.ProcessStage), T("Cleaning", "Clean", OperationType.ProcessStage), T("*", "UnderMaintenance", OperationType.Maintain), T("UnderMaintenance", "Clean", OperationType.Return)) },
                     new ItemType { Name = "Instrument Tray", Code = "TRAY", IsContainer = true,
                         Lifecycle = Lc("Sterilised", new[] { "Dirty", "Decontaminated", "Sterilised", "InUse" },
-                            T("Sterilised", "InUse", OperationType.Issue), T("InUse", "Dirty", OperationType.Return), T("Dirty", "Decontaminated", OperationType.ProcessStage), T("Decontaminated", "Sterilised", OperationType.ProcessStage, true)) },
+                            T("Sterilised", "InUse", OperationType.Issue), T("InUse", "Dirty", OperationType.Return),
+                            T("Dirty", "Decontaminated", "Decontaminate"), T("Decontaminated", "Sterilised", "Sterilise", true),
+                            // generic stage advance stays available for tenants that drive the flow from a workflow screen
+                            T("Dirty", "Decontaminated", OperationType.ProcessStage), T("Decontaminated", "Sterilised", OperationType.ProcessStage, true)) },
                     new ItemType { Name = "Surgical Instrument", Code = "INSTRUMENT", TracksCycles = true, MaxCycles = 500 },
+                },
+                OperationDefinitions =
+                {
+                    Op("Decontaminate", "Decontaminate", "Washer/disinfector complete: Dirty → Decontaminated", OperationType.ProcessStage, ItemEventType.StateChanged, null, new[] { "TRAY", "INSTRUMENT" },
+                        Fx(OperationEffectKinds.SetState), Fx(OperationEffectKinds.Move, ("optional", true))),
+                    Op("Sterilise", "Sterilise", "Autoclave cycle complete: Decontaminated → Sterilised, cycle count +1, sterile-store placement", OperationType.ProcessStage, ItemEventType.StateChanged, null, new[] { "TRAY", "INSTRUMENT" },
+                        Fx(OperationEffectKinds.SetState), Fx(OperationEffectKinds.Move, ("optional", true)), Fx(OperationEffectKinds.SetAttribute, ("key", "lastSterilisedAt"), ("value", "{now}"))),
                 },
                 Rules =
                 {

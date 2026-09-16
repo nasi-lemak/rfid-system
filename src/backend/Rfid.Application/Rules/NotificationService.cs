@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Rfid.Application.Contracts;
+using Rfid.Application.Platform;
 using Rfid.Domain;
 using Rfid.Domain.Entities;
 
@@ -26,9 +27,10 @@ public class NullNotificationSender : INotificationSender
 /// </summary>
 public class NotificationService
 {
-    private readonly IAppDb _db; private readonly INotificationSender _sender;
+    private readonly IAppDb _db; private readonly INotificationSender _sender; private readonly Outbox? _outbox;
     public string? BaseUrl { get; set; }
-    public NotificationService(IAppDb db, INotificationSender sender) { _db = db; _sender = sender; }
+    /// <param name="outbox">When supplied, deliveries are queued in the outbox and sent after commit; otherwise sent inline (tests, tools).</param>
+    public NotificationService(IAppDb db, INotificationSender sender, Outbox? outbox = null) { _db = db; _sender = sender; _outbox = outbox; }
 
     private static int Rank(Severity s) => s switch { Severity.Critical => 3, Severity.Warning => 2, _ => 1 };
 
@@ -99,10 +101,19 @@ public class NotificationService
             $"Raised: {alert.RaisedAt:u} · Severity: {alert.Severity}" + (level > 0 ? $" · Escalation level {level}" : ""),
             BaseUrl != null ? $"Open: {BaseUrl.TrimEnd('/')}/alerts" : null,
         }.Where(l => !string.IsNullOrWhiteSpace(l)));
-        var log = new NotificationLog { TenantId = alert.TenantId, ChannelId = ch.Id, AlertId = alert.Id, Subject = subject, EscalationLevel = level, SentAt = DateTime.UtcNow };
-        try { log.Recipient = await _sender.SendAsync(ch, new NotificationMessage(subject, body, alert.Severity, alert.Id, alert.ItemId, BaseUrl), ct); log.Status = NotificationStatus.Sent; }
-        catch (Exception ex) { log.Status = NotificationStatus.Failed; log.Error = ex.Message.Length > 500 ? ex.Message[..500] : ex.Message; log.Recipient = ch.Name; }
+        var log = new NotificationLog { TenantId = alert.TenantId, ChannelId = ch.Id, AlertId = alert.Id, Subject = subject, EscalationLevel = level, SentAt = DateTime.UtcNow, Recipient = ch.Name };
+        var message = new NotificationMessage(subject, body, alert.Severity, alert.Id, alert.ItemId, BaseUrl);
+        if (_outbox != null)
+        {
+            log.Status = NotificationStatus.Queued;
+            _outbox.Enqueue(OutboxKinds.Notification, new OutboxDispatcher.NotificationEnvelope(log.Id, ch.Id, message), ch.Id.ToString(), alert.TenantId == Guid.Empty ? null : alert.TenantId);
+        }
+        else
+        {
+            try { log.Recipient = await _sender.SendAsync(ch, message, ct); log.Status = NotificationStatus.Sent; }
+            catch (Exception ex) { log.Status = NotificationStatus.Failed; log.Error = ex.Message.Length > 500 ? ex.Message[..500] : ex.Message; }
+        }
         _db.NotificationLogs.Add(log);
-        return log.Status == NotificationStatus.Sent;
+        return log.Status is NotificationStatus.Sent or NotificationStatus.Queued;
     }
 }

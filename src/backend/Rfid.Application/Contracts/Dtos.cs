@@ -4,7 +4,10 @@ namespace Rfid.Application.Contracts;
 
 public class OperationRequest
 {
+    /// <summary>Built-in base type; ignored when Operation names a definition code.</summary>
     public OperationType Type { get; set; }
+    /// <summary>Operation definition code (built-in type name or a tenant/template-defined operation such as "Sterilise").</summary>
+    public string? Operation { get; set; }
     public Guid? FromLocationId { get; set; }
     public Guid? ToLocationId { get; set; }
     public Guid? PartyId { get; set; }
@@ -68,6 +71,8 @@ public class ReadBatchRequest
 {
     public Guid? DeviceId { get; set; }
     public string? SessionId { get; set; }
+    /// <summary>Client-generated batch id (edge agents, handheld store-and-forward): a replayed batch is acknowledged, not re-applied.</summary>
+    public string? BatchId { get; set; }
     public List<ReadRequest> Reads { get; set; } = new();
 }
 
@@ -91,6 +96,8 @@ public class IngestResult
     public int Unknown { get; set; }
     public int Events { get; set; }
     public int Alerts { get; set; }
+    /// <summary>True when the batch id was already processed: the original result is returned and nothing is re-applied.</summary>
+    public bool Duplicate { get; set; }
 }
 
 public class StocktakeScanRequest

@@ -175,3 +175,25 @@ How to load them:
 Writing a new scenario is declarative — see the `Scenario` record in `DemoModel.cs`. The unit test
 `DemoSeedTests` replays every scenario and fails on any rejected history step, so lifecycle mistakes in
 seed data are caught at build time.
+
+
+## Template-defined operations
+
+Since v2.0 a template can define **operations**, not only list the built-ins it uses. An
+operation definition is a named composition of built-in effects (`Move`, `SetCustodian`,
+`SetDueBack`, `SetState`, `IncrementCycle`, `RecordInspection`, `Pack`, `AdjustQuantity`,
+`SetAttribute`, …) with requirements, an event type and the item types it applies to. Lifecycle
+transitions are keyed by the operation code, so the state machine and the operation share one
+vocabulary:
+
+| Template | Operation | Composition | Lifecycle |
+|---|---|---|---|
+| `medical-assets` | `Decontaminate` | `SetState`, `Move{optional}` | `Dirty → Decontaminated` |
+| `medical-assets` | `Sterilise` | `SetState`, `Move{optional}`, `SetAttribute{lastSterilisedAt: {now}}` | `Decontaminated → Sterilised` (+1 cycle) |
+| `tool-tracking` | `Calibrate` | `RecordInspection`, `SetAttribute{calibrated: true}`, `SetAttribute{calibratedAt: {now}}` | — |
+
+Installing a template installs its operations for the tenant (idempotently; existing tenants are
+synced on startup). They appear in the web and handheld operation pickers with fields derived
+from their definition, and history records the operation code (`definitionCode`). Tenants can add
+their own through `POST /api/operations/definitions`. The effect vocabulary is closed: a vertical
+that needs a new effect is a platform change (one effect, one test), never a script.

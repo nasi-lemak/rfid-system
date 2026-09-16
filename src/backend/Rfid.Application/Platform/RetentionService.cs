@@ -26,6 +26,8 @@ public class RetentionService
         new("anomalies", "Dismissed/confirmed anomalies", 90, false),
         new("print_jobs", "Finished print jobs", 90, false),
         new("warehouse_runs", "Warehouse export run history", 180, false),
+        new("outbox", "Delivered / dead-lettered outbox messages", 30, false),
+        new("idempotency_keys", "Replay-detection keys for read batches and captures", 30, false),
         new("item_events", "Item events – the chain of custody (off by default)", null, true),
     };
 
@@ -67,6 +69,8 @@ public class RetentionService
             "anomalies" => (await _db.Anomalies.LongCountAsync(ct), await _db.Anomalies.LongCountAsync(r => r.Status != AnomalyStatus.Open && r.LastSeenAt < c, ct)),
             "print_jobs" => (await _db.PrintJobs.LongCountAsync(ct), await _db.PrintJobs.LongCountAsync(r => r.Status != PrintJobStatus.Queued && r.Status != PrintJobStatus.Printing && r.CreatedAt < c, ct)),
             "warehouse_runs" => (await _db.WarehouseExportRuns.LongCountAsync(ct), await _db.WarehouseExportRuns.LongCountAsync(r => r.StartedAt < c, ct)),
+            "outbox" => (await _db.Outbox.LongCountAsync(ct), await _db.Outbox.LongCountAsync(r => r.ProcessedAt != null && r.ProcessedAt < c, ct)),
+            "idempotency_keys" => (await _db.IdempotencyKeys.LongCountAsync(ct), await _db.IdempotencyKeys.LongCountAsync(r => r.CreatedAt < c, ct)),
             "item_events" => (await _db.ItemEvents.LongCountAsync(ct), await _db.ItemEvents.LongCountAsync(r => r.OccurredAt < c, ct)),
             _ => (0, 0),
         };
@@ -106,6 +110,8 @@ public class RetentionService
             "anomalies" => await Del(_db.Anomalies, _db.Anomalies.Where(r => r.Status != AnomalyStatus.Open && r.LastSeenAt < c)),
             "print_jobs" => await Del(_db.PrintJobs, _db.PrintJobs.Where(r => r.Status != PrintJobStatus.Queued && r.Status != PrintJobStatus.Printing && r.CreatedAt < c)),
             "warehouse_runs" => await Del(_db.WarehouseExportRuns, _db.WarehouseExportRuns.Where(r => r.StartedAt < c)),
+            "outbox" => await Del(_db.Outbox, _db.Outbox.Where(r => r.ProcessedAt != null && r.ProcessedAt < c)),
+            "idempotency_keys" => await Del(_db.IdempotencyKeys, _db.IdempotencyKeys.Where(r => r.CreatedAt < c)),
             "item_events" => await Del(_db.ItemEvents, _db.ItemEvents.Where(r => r.OccurredAt < c)),
             _ => 0,
         };

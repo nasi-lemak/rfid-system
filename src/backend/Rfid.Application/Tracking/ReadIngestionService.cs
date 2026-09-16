@@ -31,6 +31,16 @@ public class ReadIngestionService
     {
         var result = new IngestResult { Received = batch.Reads.Count };
         var deviceId = batch.DeviceId ?? _ctx.DeviceId;
+        var batchKey = string.IsNullOrWhiteSpace(batch.BatchId) ? null : $"{deviceId?.ToString("N") ?? "-"}:{batch.BatchId.Trim()}";
+        if (batchKey != null)
+        {
+            var seen = await _db.IdempotencyKeys.FirstOrDefaultAsync(k => k.Scope == IdempotencyScopes.ReadBatch && k.Key == batchKey, ct);
+            if (seen != null)
+            {
+                var prior = seen.Response == null ? null : System.Text.Json.JsonSerializer.Deserialize<IngestResult>(seen.Response);
+                return prior == null ? new IngestResult { Received = batch.Reads.Count, Duplicate = true } : new IngestResult { Received = prior.Received, Resolved = prior.Resolved, Unknown = prior.Unknown, Events = prior.Events, Alerts = prior.Alerts, Duplicate = true };
+            }
+        }
         Device? device = deviceId.HasValue
             ? await _db.Devices.Include(d => d.Antennas).ThenInclude(a => a.Location).FirstOrDefaultAsync(d => d.Id == deviceId, ct)
             : null;
@@ -119,6 +129,8 @@ public class ReadIngestionService
         }
 
         if (_position != null) foreach (var sg in sightings.Values) _position.Update(sg.item, sg.list, sg.at);
+        // The idempotency key commits in the same unit of work as the reads/events it guards.
+        if (batchKey != null) _db.IdempotencyKeys.Add(new IdempotencyKey { TenantId = _ctx.TenantId, Scope = IdempotencyScopes.ReadBatch, Key = batchKey, Response = System.Text.Json.JsonSerializer.Serialize(result) });
         await _db.SaveChangesAsync(ct);
         await _live.PublishReadsAsync(live, ct);
         return result;

@@ -17,14 +17,10 @@ public class LiveHub : Hub
     }
 }
 
-public class SignalRLivePublisher : ILivePublisher
+/// <summary>SignalR transport used by the outbox dispatcher (events/alerts, after commit) and for the best-effort raw read stream.</summary>
+public class SignalRLiveTransport : Rfid.Application.Platform.ILiveTransport
 {
     private readonly IHubContext<LiveHub> _hub;
-    private readonly ICurrentContext _ctx;
-    public SignalRLivePublisher(IHubContext<LiveHub> hub, ICurrentContext ctx) { _hub = hub; _ctx = ctx; }
-    private IClientProxy Group => _hub.Clients.Group(_ctx.TenantId.ToString());
-
-    public Task PublishReadsAsync(IEnumerable<LiveRead> reads, CancellationToken ct = default) => Group.SendAsync("reads", reads.ToList(), ct);
-    public Task PublishAlertAsync(Alert alert, CancellationToken ct = default) => Group.SendAsync("alert", new { alert.Id, alert.ItemId, alert.LocationId, Severity = alert.Severity.ToString(), alert.Message, alert.RaisedAt }, ct);
-    public Task PublishEventAsync(ItemEvent ev, CancellationToken ct = default) => Group.SendAsync("event", new { ev.Id, ev.ItemId, Type = ev.Type.ToString(), ev.FromLocationId, ev.ToLocationId, ev.ToState, ev.OccurredAt }, ct);
+    public SignalRLiveTransport(IHubContext<LiveHub> hub) => _hub = hub;
+    public Task SendAsync(Guid tenantId, string method, object payload, CancellationToken ct = default) => _hub.Clients.Group(tenantId.ToString()).SendAsync(method, payload, ct);
 }

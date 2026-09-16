@@ -56,14 +56,18 @@ public class ErrorHandlingMiddleware
     }
 }
 
-public class HttpWebhookDispatcher : Rfid.Application.Contracts.IWebhookDispatcher
+/// <summary>HTTP transport for outbox webhooks (retries are the dispatcher's job).</summary>
+public class HttpWebhookTransport : Rfid.Application.Platform.IWebhookTransport
 {
     private readonly HttpClient _http;
-    private readonly ILogger<HttpWebhookDispatcher> _log;
-    public HttpWebhookDispatcher(HttpClient http, ILogger<HttpWebhookDispatcher> log) { _http = http; _log = log; }
-    public async Task SendAsync(string url, object payload, CancellationToken ct = default)
+    public HttpWebhookTransport(HttpClient http) { _http = http; _http.Timeout = TimeSpan.FromSeconds(20); }
+    public async Task<(bool ok, string? error)> PostJsonAsync(string url, string json, CancellationToken ct = default)
     {
-        try { await _http.PostAsJsonAsync(url, payload, ct); }
-        catch (Exception ex) { _log.LogWarning(ex, "Webhook to {Url} failed", url); }
+        try
+        {
+            using var res = await _http.PostAsync(url, new StringContent(json, System.Text.Encoding.UTF8, "application/json"), ct);
+            return res.IsSuccessStatusCode ? (true, null) : (false, $"HTTP {(int)res.StatusCode} {res.ReasonPhrase}");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested) { return (false, ex.Message); }
     }
 }

@@ -32,7 +32,7 @@ public class TestHost
         Db = new AppDbContext(opts, Ctx);
         var resolver = new TagResolver(Db);
         Rules = new RuleEngine(Db, Ctx, new NullLivePublisher(), new NullWebhookDispatcher());
-        Ops = new OperationProcessor(Db, Ctx, resolver, Rules, new NullLivePublisher());
+        Ops = new OperationProcessor(Db, Ctx, resolver, Rules, new NullLivePublisher(), new Rfid.Application.Operations.OperationDefinitions(Db));
         Stocktakes = new StocktakeService(Db, Ctx, resolver, Rules);
         Ingest = new ReadIngestionService(Db, Ctx, resolver, Rules, new NullLivePublisher(), new PresenceService(Db, Ctx, Rules, new NullLivePublisher()));
         Templates = new TemplateProvisioner(Db, Ctx);

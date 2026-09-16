@@ -64,7 +64,7 @@ public class PresenceService
             {
                 var parent = loc.ParentId.HasValue ? await _db.Locations.FindAsync(new object[] { loc.ParentId.Value }, ct) : null;
                 item.CurrentLocationId = parent?.Id;
-                var ev = new ItemEvent { TenantId = _ctx.TenantId, ItemId = item.Id, Type = ItemEventType.Moved, FromLocationId = loc.Id, ToLocationId = parent?.Id, OccurredAt = s.ExitedAt.Value, DeviceId = s.DeviceId, Data = new() { ["direction"] = "Exit", ["zone"] = loc.Name, ["dwellSeconds"] = (s.ExitedAt.Value - s.EnteredAt).TotalSeconds } };
+                var ev = new ItemEvent { TenantId = _ctx.TenantId, ItemId = item.Id, Type = ItemEventType.Moved, FromLocationId = loc.Id, ToLocationId = parent?.Id, OccurredAt = s.ExitedAt.Value, DeviceId = s.DeviceId, Data = new() { ["direction"] = "Out", ["zone"] = loc.Name, ["dwellSeconds"] = (s.ExitedAt.Value - s.EnteredAt).TotalSeconds } };
                 _db.ItemEvents.Add(ev);
                 await _live.PublishEventAsync(ev, ct);
                 await _rules.EvaluateAsync(new RuleContext { Event = ev, Item = item, ItemType = item.ItemType, FromLocation = loc, ToLocation = parent }, ct);

@@ -179,6 +179,46 @@ public class MaintenanceForecastService : TenantLoopService
     }
 }
 
+/// <summary>
+/// Delivers committed outbox messages (live pushes, webhooks, notifications). Runs on the lease holder; woken after every
+/// commit through OutboxSignal so latency stays sub-second, with a 2 s fallback poll and bounded exponential retries.
+/// </summary>
+public class OutboxDispatcherService : BackgroundService
+{
+    private readonly IServiceScopeFactory _scopes; private readonly ILogger<OutboxDispatcherService> _log; private readonly OutboxSignal _signal;
+    private bool? _leader;
+    public OutboxDispatcherService(IServiceScopeFactory scopes, ILogger<OutboxDispatcherService> log, OutboxSignal signal) { _scopes = scopes; _log = log; _signal = signal; }
+    protected override async Task ExecuteAsync(CancellationToken ct)
+    {
+        await Task.Delay(TimeSpan.FromSeconds(3), ct);
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                using var scope = _scopes.CreateScope();
+                var ok = await scope.ServiceProvider.GetRequiredService<LeaseService>().TryAcquireAsync("job:outbox", ClusterNode.Id, TimeSpan.FromSeconds(30), ct: ct);
+                if (_leader != ok) { _log.LogInformation("Outbox dispatcher: node {Node} is now {State}", ClusterNode.Id, ok ? "leader" : "standby"); _leader = ok; }
+                if (ok)
+                {
+                    var stats = await scope.ServiceProvider.GetRequiredService<Rfid.Application.Platform.OutboxDispatcher>().DispatchAsync(DateTime.UtcNow, 500, ct);
+                    if (stats.Failed > 0 || stats.Dead > 0) _log.LogWarning("Outbox: {Delivered} delivered, {Failed} will retry, {Dead} dead-lettered", stats.Delivered, stats.Failed, stats.Dead);
+                    if (stats.Delivered == 500) continue; // more waiting – loop immediately
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException) { _log.LogWarning(ex, "Outbox dispatcher error"); }
+            await _signal.WaitAsync(TimeSpan.FromSeconds(_leader == true ? 2 : 10), ct);
+        }
+    }
+}
+
+/// <summary>In-process nudge from SaveChanges to the outbox dispatcher (cross-node delivery still happens via the poll).</summary>
+public class OutboxSignal
+{
+    private readonly SemaphoreSlim _sem = new(0, 1);
+    public void Nudge() { try { _sem.Release(); } catch (SemaphoreFullException) { } }
+    public async Task WaitAsync(TimeSpan timeout, CancellationToken ct) { try { await _sem.WaitAsync(timeout, ct); } catch (OperationCanceledException) { } }
+}
+
 public class HttpIntegrationTransport : IIntegrationTransport
 {
     private readonly HttpClient _http;

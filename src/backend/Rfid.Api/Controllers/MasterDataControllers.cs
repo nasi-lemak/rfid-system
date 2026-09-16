@@ -180,16 +180,6 @@ public class TagsController : ControllerBase
         return Ok(reads.GroupBy(r => r.Epc).Select(g => new { Epc = g.Key, LastSeen = g.Max(r => r.ReadAt), Count = g.Count(), DeviceId = g.First().DeviceId }).OrderByDescending(x => x.LastSeen).Take(take));
     }
 
-    [HttpPost("encode/sgtin96"), Authorize(Policy = "Operator")]
-    public IActionResult EncodeSgtin(string companyPrefix, string itemRef, ulong serial, int filter = 1)
-        => Ok(new { epc = Rfid.Domain.Epc.Sgtin96.Encode(companyPrefix, itemRef, serial, filter) });
-
-    [HttpGet("decode/{epc}")]
-    public IActionResult Decode(string epc)
-    {
-        var d = Rfid.Domain.Epc.Sgtin96.Decode(TagResolver.Normalize(epc));
-        return d == null ? Ok(new { scheme = "unknown" }) : Ok(new { scheme = "SGTIN-96", d.Value.companyPrefix, d.Value.itemRef, d.Value.serial });
-    }
 }
 
 [ApiController, Route("api/devices"), Authorize]

@@ -54,19 +54,32 @@ cd src/web && npm install && npm run dev                     # http://localhost:
 cd src/mobile && npm install && npx expo start               # Expo Go with the simulated reader
 ```
 
-Tests: `cd src/backend && dotnet test` (application layer: operations, lifecycles, containers,
-stocktakes, ingestion/zone rules, rule engine, EPC encoding).
+Tests: `cd src/backend && dotnet test` (99 tests over the real services: operations and
+definitions, lifecycles, containers, stocktakes, ingestion/zone rules, rule engine, outbox,
+idempotency, RLS coverage, EPC encoding, every roadmap module).
+
+Production note: `docker-compose.yml` connects the API as the restricted `rfid_app` role so
+Postgres row-level security applies (`deploy/db-init/` creates the role; migrations run as the
+owner through `ConnectionStrings__Migrations`). Set `APP_DB_PASSWORD`, `JWT_KEY`, `ADMIN_PASSWORD`.
 
 ## What is implemented
 
 **Backend**
 - Multi-tenant model with global query filters; JWT for users (Admin/Operator/Viewer) and
   provisioning tokens for devices.
-- Generic **operation processor**: Receive, Transfer, Issue, Return, Count, Dispatch, Inspect,
-  Maintain, Dispose, Pack, Unpack, ProcessStage, Commission, Adjust — each applies location /
-  custody / state / quantity / container effects, drives the item type's lifecycle state machine,
-  writes append-only `item_events` (chain of custody) and evaluates rules. Idempotent via `clientId`
-  for offline handhelds (`POST /api/operations/batch`).
+- **Operations as configuration**: every operation — the 14 built-ins (Receive, Transfer, Issue,
+  Return, Count, Dispatch, Inspect, Maintain, Dispose, Pack, Unpack, ProcessStage, Commission,
+  Adjust) and template/tenant-defined ones such as `Sterilise` or `Calibrate` — is a definition
+  composed from a closed set of effects (move, custody, due-back, state, cycles, inspection,
+  pack/unpack, quantity, attribute). One processor drives the item type's lifecycle (transitions
+  keyed by operation code), writes append-only `item_events` (chain of custody, including every
+  container child) and evaluates rules. Idempotent via `clientId` (`POST /api/operations/batch`).
+- **Transactional outbox**: live pushes, webhooks and notifications are committed with the state
+  that caused them and delivered afterwards with retries — nothing external ever sees a rolled-back
+  change. Read batches are idempotent by `batchId` for store-and-forward edge agents.
+- **Tenant isolation twice**: EF query filters plus Postgres row-level security on every tenant
+  table, pinned per connection; per-site RBAC filters items, locations, devices, alerts, events,
+  reads and operations.
 - **Read ingestion** for fixed readers / portals / cabinets / gates: antenna → location + In/Out
   direction, debounced Seen/Moved events, rule evaluation, live fan-out over SignalR.
 - **Stocktakes**: expected set from a location subtree, streaming scans, found / missing /
@@ -211,8 +224,32 @@ See [`docs/INTEGRATION.md`](docs/INTEGRATION.md).
   dispositions, EPC/SGLN URNs, business transactions) with the simple event query and a capture
   endpoint that turns partner documents into reads and operations.
 
+## v2.0 — architecture consolidation
+
+A first-principles review of the whole platform before further expansion; the findings,
+decisions and the re-assessed roadmap are in
+[`docs/ARCHITECTURE-REVIEW.md`](docs/ARCHITECTURE-REVIEW.md), and
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) now describes the system as built.
+
+- **Transactional outbox** for every external side effect (SignalR, webhooks, notifications).
+- **Operation definitions**: built-ins and vertical operations share one effect vocabulary and one
+  execution path; templates ship operations (`Decontaminate`, `Sterilise`, `Calibrate`); admins can
+  define their own; web and handheld forms are generated from the definition.
+- **Idempotency as data**: `operations.ClientId` column + unique index; `batchId` on read batches.
+- **Container invariants**: cycle prevention, bounded depth, child moves are first-class events
+  that carry the operation and fire rules.
+- **Row-level security** on all tenant tables with a restricted runtime role; login disambiguation
+  by `tenantCode`; site RBAC extended to alerts, events, reads and batch operations.
+- **Consolidation**: lifecycle validation in rules and manual edits, one direction vocabulary
+  (`Out`), duplicate encode/decode endpoints removed, module folders instead of release-numbered
+  files, hardened handheld queue (match by `clientId`, back-off, attempt cap, visible rejections).
+
 ## Roadmap
 
-Reader edge agents (containerised on-reader ingestion with store-and-forward) · digital twin views
-per site (3D racks/zones) · advanced RTLS (UWB TDoA, BLE AoA) · workflow builder for guided
-handheld tasks · marketplace of vertical apps built on the templates.
+Re-assessed from first principles in [`docs/ARCHITECTURE-REVIEW.md`](docs/ARCHITECTURE-REVIEW.md) §7.
+Foundation next: reader **edge agent** with store-and-forward (built on `batchId`), integrations on
+the outbox, scheduled rule triggers and a `RunOperation` action, EPCIS bizStep as definition data.
+Near-term: guided **workflows** as ordered operation definitions, device configuration management,
+analytics consolidation. Long-term modules: WMS stock balances as an event projection, vendor
+RTLS position ingest (UWB TDoA / BLE AoA engines), 3D digital-twin views, signed template
+marketplace, native partitioning of high-volume tables.

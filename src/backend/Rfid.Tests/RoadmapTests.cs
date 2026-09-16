@@ -90,7 +90,7 @@ public class PresenceTests
         Assert.Empty(await presence.OccupancyAsync(site.Id));
         var fresh = await h.Db.Items.FirstAsync(i => i.Id == item.Id);
         Assert.Equal(site.Id, fresh.CurrentLocationId);
-        Assert.Contains(await h.Db.ItemEvents.ToListAsync(), e => e.Type == ItemEventType.Moved && e.Data.TryGetValue("direction", out var d) && d?.ToString() == "Exit");
+        Assert.Contains(await h.Db.ItemEvents.ToListAsync(), e => e.Type == ItemEventType.Moved && e.Data.TryGetValue("direction", out var d) && d?.ToString() == "Out");
     }
 
     [Fact]

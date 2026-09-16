@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Rfid.Application.Contracts;
+using Rfid.Application.Operations;
 using Rfid.Application.Security;
 using Rfid.Application.Services;
 using Rfid.Application.Templates;
@@ -36,17 +37,71 @@ public class OperationsController : ControllerBase
         var results = new List<object>();
         foreach (var r in reqs)
         {
-            try { results.Add(new { clientId = r.ClientId, ok = true, result = await _processor.ProcessAsync(r, ct) }); }
+            try { await EnsureSiteAsync(r, ct); results.Add(new { clientId = r.ClientId, ok = true, result = await _processor.ProcessAsync(r, ct) }); }
             catch (DomainException ex) { results.Add(new { clientId = r.ClientId, ok = false, error = ex.Message }); }
         }
         return Ok(results);
     }
 
+    /// <summary>Every operation the tenant can run: the built-in catalogue plus template/tenant-defined compositions of effects.</summary>
+    [HttpGet("definitions")]
+    public async Task<IActionResult> Definitions([FromServices] OperationDefinitions defs, bool includeDisabled = false, CancellationToken ct = default)
+    {
+        var all = await defs.ListAsync(ct);
+        return Ok(all.Where(d => includeDisabled || d.Enabled).Select(d => new
+        {
+            d.Id, d.Code, d.Name, d.Description, d.BaseType, EventType = d.EventType ?? OperationCatalog.DefaultEvent(d.BaseType), d.Effects, d.Requires, d.ItemTypeCodes, d.Enabled, d.IsBuiltIn, d.Vertical, d.Icon,
+        }));
+    }
+
+    /// <summary>The closed effect vocabulary a definition may compose (drives the admin editor).</summary>
+    [HttpGet("definitions/effects")]
+    public IActionResult Effects() => Ok(OperationEffectKinds.All);
+
+    [HttpPost("definitions"), Authorize(Policy = "Admin")]
+    public async Task<IActionResult> CreateDefinition([FromServices] OperationDefinitions defs, OperationDefinition d, CancellationToken ct)
+    {
+        d.Id = Guid.Empty; d.IsBuiltIn = false; d.TenantId = default;
+        var errors = OperationCatalog.Validate(d);
+        if (errors.Count > 0) return BadRequest(new { errors });
+        if (await _db.OperationDefinitions.AnyAsync(x => x.Code == d.Code, ct)) return Conflict(new { error = $"Operation '{d.Code}' already exists" });
+        var e = new OperationDefinition { Code = d.Code, Name = d.Name, Description = d.Description, BaseType = d.BaseType, EventType = d.EventType, Effects = d.Effects, Requires = d.Requires, EventData = d.EventData, ItemTypeCodes = d.ItemTypeCodes, Enabled = d.Enabled, Vertical = d.Vertical, Icon = d.Icon };
+        _db.OperationDefinitions.Add(e); await _db.SaveChangesAsync(ct); defs.InvalidateCache();
+        return Created($"/api/operations/definitions/{e.Id}", e);
+    }
+
+    [HttpPut("definitions/{id:guid}"), Authorize(Policy = "Admin")]
+    public async Task<IActionResult> UpdateDefinition([FromServices] OperationDefinitions defs, Guid id, OperationDefinition d, CancellationToken ct)
+    {
+        var e = await _db.OperationDefinitions.FirstOrDefaultAsync(x => x.Id == id, ct); if (e == null) return NotFound();
+        d.Code = e.Code; d.IsBuiltIn = false;
+        var errors = OperationCatalog.Validate(d);
+        if (errors.Count > 0) return BadRequest(new { errors });
+        e.Name = d.Name; e.Description = d.Description; e.BaseType = d.BaseType; e.EventType = d.EventType; e.Effects = d.Effects; e.Requires = d.Requires; e.EventData = d.EventData; e.ItemTypeCodes = d.ItemTypeCodes; e.Enabled = d.Enabled; e.Vertical = d.Vertical; e.Icon = d.Icon;
+        await _db.SaveChangesAsync(ct); defs.InvalidateCache();
+        return Ok(e);
+    }
+
+    /// <summary>Definitions are never hard-deleted once used: operations reference them by code. Disable instead.</summary>
+    [HttpDelete("definitions/{id:guid}"), Authorize(Policy = "Admin")]
+    public async Task<IActionResult> DeleteDefinition([FromServices] OperationDefinitions defs, Guid id, CancellationToken ct)
+    {
+        var e = await _db.OperationDefinitions.FirstOrDefaultAsync(x => x.Id == id, ct); if (e == null) return NotFound();
+        if (await _db.Operations.AnyAsync(o => o.DefinitionCode == e.Code, ct)) { e.Enabled = false; await _db.SaveChangesAsync(ct); defs.InvalidateCache(); return Ok(new { disabled = true, reason = "Operations already reference this definition; it was disabled instead of deleted" }); }
+        _db.OperationDefinitions.Remove(e); await _db.SaveChangesAsync(ct); defs.InvalidateCache();
+        return NoContent();
+    }
+
     [HttpGet]
-    public async Task<Paged<object>> List(OperationType? type, int? page, int? pageSize)
+    public async Task<Paged<object>> List(OperationType? type, string? operation, int? page, int? pageSize)
     {
         var (p, s) = Query.Page(page, pageSize);
         var q = _db.Operations.Include(o => o.Lines).AsQueryable();
+        if (!string.IsNullOrWhiteSpace(operation))
+        {
+            // Rows written before definitions existed carry only the base type.
+            q = Enum.TryParse<OperationType>(operation, true, out var legacy) ? q.Where(o => o.DefinitionCode == operation || (o.DefinitionCode == null && o.Type == legacy)) : q.Where(o => o.DefinitionCode == operation);
+        }
         if (type.HasValue) q = q.Where(o => o.Type == type);
         var total = await q.CountAsync();
         var ops = await q.OrderByDescending(o => o.StartedAt).Skip((p - 1) * s).Take(s).ToListAsync();
@@ -58,7 +113,7 @@ public class OperationsController : ControllerBase
         var users = await _db.Users.Where(x => userIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.DisplayName);
         return new Paged<object>(ops.Select(o => (object)new
         {
-            o.Id, o.Type, o.Status, o.FromLocationId, FromLocation = o.FromLocationId.HasValue ? locs.GetValueOrDefault(o.FromLocationId.Value) : null,
+            o.Id, o.Type, o.DefinitionCode, o.Status, o.FromLocationId, FromLocation = o.FromLocationId.HasValue ? locs.GetValueOrDefault(o.FromLocationId.Value) : null,
             o.ToLocationId, ToLocation = o.ToLocationId.HasValue ? locs.GetValueOrDefault(o.ToLocationId.Value) : null,
             o.PartyId, Party = o.PartyId.HasValue ? parties.GetValueOrDefault(o.PartyId.Value) : null, o.TargetState, o.Reference, o.Notes, o.DeviceId,
             o.UserId, User = o.UserId.HasValue ? users.GetValueOrDefault(o.UserId.Value) : null, o.StartedAt, o.CompletedAt,
@@ -74,7 +129,7 @@ public class OperationsController : ControllerBase
         var items = await _db.Items.Where(i => itemIds.Contains(i.Id)).ToDictionaryAsync(i => i.Id);
         return Ok(new
         {
-            o.Id, o.Type, o.Status, o.FromLocationId, o.ToLocationId, o.PartyId, o.ContainerItemId, o.TargetState, o.Reference, o.Notes, o.DeviceId, o.UserId, o.StartedAt, o.CompletedAt, o.DueBackAt,
+            o.Id, o.Type, o.DefinitionCode, o.ClientId, o.Status, o.FromLocationId, o.ToLocationId, o.PartyId, o.ContainerItemId, o.TargetState, o.Reference, o.Notes, o.DeviceId, o.UserId, o.StartedAt, o.CompletedAt, o.DueBackAt,
             Lines = o.Lines.Select(l => new { l.Id, l.Epc, l.ItemId, ItemName = l.ItemId.HasValue ? items.GetValueOrDefault(l.ItemId.Value)?.Name : null, ItemIdentifier = l.ItemId.HasValue ? items.GetValueOrDefault(l.ItemId.Value)?.Identifier : null, l.Quantity, l.Result, l.Message }),
         });
     }
@@ -184,13 +239,21 @@ public class RulesController : ControllerBase
 [ApiController, Route("api/alerts"), Authorize]
 public class AlertsController : ControllerBase
 {
-    private readonly AppDbContext _db; private readonly ICurrentContext _ctx;
-    public AlertsController(AppDbContext db, ICurrentContext ctx) { _db = db; _ctx = ctx; }
+    private readonly AppDbContext _db; private readonly ICurrentContext _ctx; private readonly ISiteAccess _sites;
+    public AlertsController(AppDbContext db, ICurrentContext ctx, ISiteAccess sites) { _db = db; _ctx = ctx; _sites = sites; }
 
     [HttpGet]
     public async Task<IActionResult> List(AlertStatus? status = AlertStatus.Open, int take = 200)
     {
         var q = _db.Alerts.AsQueryable();
+        var paths = await _sites.AllowedPathsAsync();
+        if (paths != null)
+        {
+            // Site-restricted principals see alerts raised at their sites (or on items currently there).
+            var allowedLocs = SiteAccess.Filter(_db.Locations, paths).Select(l => l.Id);
+            var allowedItems = SiteAccess.Filter(_db.Items, paths).Select(i => i.Id);
+            q = q.Where(a => (a.LocationId != null && allowedLocs.Contains(a.LocationId.Value)) || (a.LocationId == null && a.ItemId != null && allowedItems.Contains(a.ItemId.Value)));
+        }
         if (status.HasValue) q = q.Where(a => a.Status == status);
         var alerts = await q.OrderByDescending(a => a.RaisedAt).Take(take).ToListAsync();
         var ids = alerts.Where(a => a.ItemId.HasValue).Select(a => a.ItemId!.Value).Distinct().ToList();
@@ -257,13 +320,22 @@ public class TemplatesController : ControllerBase
 [ApiController, Route("api/events"), Authorize]
 public class EventsController : ControllerBase
 {
-    private readonly AppDbContext _db;
-    public EventsController(AppDbContext db) => _db = db;
+    private readonly AppDbContext _db; private readonly ISiteAccess _sites;
+    public EventsController(AppDbContext db, ISiteAccess sites) { _db = db; _sites = sites; }
+
+    private async Task<IQueryable<ItemEvent>> ScopedEventsAsync()
+    {
+        var q = _db.ItemEvents.AsQueryable();
+        var paths = await _sites.AllowedPathsAsync();
+        if (paths == null) return q;
+        var allowedLocs = SiteAccess.Filter(_db.Locations, paths).Select(l => l.Id);
+        return q.Where(e => (e.ToLocationId != null && allowedLocs.Contains(e.ToLocationId.Value)) || (e.FromLocationId != null && allowedLocs.Contains(e.FromLocationId.Value)));
+    }
 
     [HttpGet]
     public async Task<IActionResult> Recent(ItemEventType? type, Guid? locationId, int take = 100)
     {
-        var q = _db.ItemEvents.AsQueryable();
+        var q = await ScopedEventsAsync();
         if (type.HasValue) q = q.Where(e => e.Type == type);
         if (locationId.HasValue) q = q.Where(e => e.ToLocationId == locationId || e.FromLocationId == locationId);
         var events = await q.OrderByDescending(e => e.OccurredAt).Take(Math.Clamp(take, 1, 1000)).ToListAsync();
@@ -276,6 +348,8 @@ public class EventsController : ControllerBase
     public async Task<IActionResult> Reads(Guid? deviceId, int take = 200)
     {
         var q = _db.TagReads.AsQueryable();
+        var paths = await _sites.AllowedPathsAsync();
+        if (paths != null) { var allowedLocs = SiteAccess.Filter(_db.Locations, paths).Select(l => l.Id); q = q.Where(r => r.LocationId != null && allowedLocs.Contains(r.LocationId.Value)); }
         if (deviceId.HasValue) q = q.Where(r => r.DeviceId == deviceId);
         return Ok(await q.OrderByDescending(r => r.ReadAt).Take(Math.Clamp(take, 1, 2000)).Select(r => new { r.Id, r.Epc, r.ItemId, r.DeviceId, r.AntennaPort, r.Rssi, r.ReadAt, r.LocationId, r.Source }).ToListAsync());
     }

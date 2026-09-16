@@ -1,229 +1,276 @@
 # RFID Platform — Architecture
 
-## 1. Goal
+This describes the system as built (v2.0, after the consolidation recorded in
+[`ARCHITECTURE-REVIEW.md`](ARCHITECTURE-REVIEW.md)). `DATA-MODEL.md` lists tables,
+`INTEGRATION.md` the external contracts, `SOLUTION-TEMPLATES.md` the vertical mapping.
 
-One platform that can run *any* RFID-based tracking system — asset, inventory,
-warehouse, linen/laundry, medical, evidence, library, retail, returnable
-packaging, manufacturing WIP, rental, personnel, livestock, and so on — without
-a separate codebase per vertical.
+## 1. Goal and shape
 
-The insight is that every system in the requirements table is a combination of a
-small number of **primitives** plus **configuration**:
+One platform runs every RFID-based tracking system in the requirements table — asset,
+inventory, warehouse, linen, medical, evidence, library, retail, returnable packaging,
+manufacturing WIP, rental, personnel, livestock, … — without a codebase per vertical.
 
-| Primitive | What it is | Examples across verticals |
+It is a **modular monolith**: one deployable (`Rfid.Api`) that can run as any number of
+identical nodes over one PostgreSQL, with module boundaries inside the code base rather than
+between services. Verticals are expressed as **configuration over a small, closed set of
+primitives**; the platform never executes tenant-supplied code.
+
+## 2. Primitives
+
+| Primitive | What it is | Examples |
 |---|---|---|
-| **Tag** | A physical RFID identifier (EPC/TID/UID) of any technology (UHF Gen2, HF/NFC, LF, BLE, active) | Garment label, asset plate, animal ear tag, race bib, badge |
-| **Item** | The thing a tag is attached to. Either *serialized* (one physical unit) or *quantity* (lots/SKU counts) | Laptop, sheet, pallet, keg, evidence bag, cow, medicine batch |
-| **Item Type** | A configurable schema for items: custom attributes (JSON schema), lifecycle state machine, container/expiry/cycle/inspection flags | "Bed sheet" (tracks wash cycles), "Harness" (inspection every 6 months), "Surgical tray" (container) |
-| **Location** | A node in a hierarchy: site → building → floor → room → zone → rack → shelf → bin. Mobile locations (vehicle, vessel, trailer) are locations too | Ward 3, Dock Door 2, Van 17, Locker A4, Fitting room 1 |
-| **Party** | Someone or something that can hold custody: employee, customer, department, patient, supplier, vessel crew | Nurse J. Lee, Customer ACME, Dept. Radiology |
-| **Device** | A reader: handheld, fixed portal, gate, smart cabinet/shelf/locker, tunnel. Antennas map to locations with In/Out direction | RFD40 handheld, FX9600 at dock door, cabinet in OR |
-| **Operation** | A business transaction with lines (tag reads): Receive, Transfer, Issue, Return, Count, Dispatch, Inspect, Maintain, Dispose, Pack, Unpack, ProcessStage, Commission, Adjust | Checkout tool to J. Lee, Dispatch pallets to truck, Wash-stage linen |
-| **Event** | Append-only history per item: Seen, Moved, CustodyChanged, StateChanged, Counted, Created, Retired… | Full chain of custody for evidence; wash history for linen |
-| **Rule / Alert** | Event-driven rules: `when <event> and <conditions> → <action>` | Zone exit without checkout → alert; wash count ≥ 200 → retire; expiry < 30 days → alert |
-| **Solution Template** | A JSON preset that provisions item types, lifecycles, location kinds, operations and rules for one vertical | "Hospital Linen", "Evidence Management", "Tool Crib", "Keg Management" |
+| **Tag** | A physical identifier: UHF Gen2 EPC/TID, HF/NFC, LF, BLE, active, or a barcode bound as a tag | Garment label, asset plate, ear tag, race bib, badge |
+| **Item** | The thing a tag is attached to — *serialised* (one unit) or *quantity* (lot/SKU count). Items may nest (`ParentItemId`) to model containers | Laptop, sheet, pallet, keg, evidence bag, cow, medicine lot |
+| **Item Type** | Schema for items: attribute definitions, flags (container, expiry, cycles, inspection), and the **lifecycle** state machine (`states`, `transitions[{from,to,on,incrementCycle}]`) | "Bed sheet" (wash cycles), "Harness" (6-monthly inspection), "Instrument tray" (container) |
+| **Location** | Node in a tree with a materialised `Path` for subtree queries; kinds from site to bin; mobile locations (vehicle, vessel) | Ward 3, Dock 2, Van 17, Locker A4 |
+| **Party** | Anyone who can hold custody | Nurse, customer, department, supplier |
+| **Device / Antenna** | Readers and printers; antennas map to a location with an `In`/`Out`/`None` direction | Handheld, portal, gate, cabinet, tunnel, ZPL printer |
+| **Operation** | A business transaction with lines. Its behaviour is an **Operation Definition**: a named composition of built-in **effects** with requirements (§5) | Receive, Issue, Sterilise, Calibrate |
+| **Event** | Append-only history per item (`item_events`): the chain of custody | Moved, CustodyChanged, StateChanged, Counted, Packed … |
+| **Rule / Alert** | `when <event type> and <conditions> → <action>` with a fixed field vocabulary and a closed action set | Zone exit while checked out → critical alert |
+| **Solution Template** | JSON preset that provisions item types, lifecycles, rules and **operation definitions** for a vertical | Hospital Linen, Evidence, Tool Crib, Medical Assets |
 
-`docs/SOLUTION-TEMPLATES.md` maps every row of the requirements table onto these
-primitives.
+Everything else in the platform (presence, RTLS, billing, EPCIS, anomaly detection, …) is a
+module that reads or writes these primitives.
 
-## 2. System Landscape
-
-```
-┌───────────────────────────────┐    ┌──────────────────────────────┐
-│  React Web (Vite + TS)        │    │  React Native Handheld (Expo)│
-│  admin, dashboards, ops       │    │  scan / locate / stocktake / │
-│  stocktakes, rules, templates │    │  operations / commission     │
-└──────────────┬────────────────┘    │  offline queue + sync        │
-               │ REST + SignalR      └──────────────┬───────────────┘
-               ▼                                    │ REST (batched)
-┌────────────────────────────────────────────────────▼───────────────┐
-│  Rfid.Api (ASP.NET Core 8)                                          │
-│  JWT auth · tenant scoping · Swagger · SignalR LiveHub              │
-│  /api/ingest  ← fixed readers / edge agents / LLRP bridges / MQTT   │
-├─────────────────────────────────────────────────────────────────────┤
-│  Rfid.Application                                                   │
-│  TagResolver · OperationProcessor · StocktakeService · RuleEngine   │
-│  ReadIngestionService (zone presence, in/out portals)               │
-│  TemplateProvisioner · Auth                                         │
-├─────────────────────────────────────────────────────────────────────┤
-│  Rfid.Domain    entities, lifecycle state machine, invariants        │
-├─────────────────────────────────────────────────────────────────────┤
-│  Rfid.Infrastructure   EF Core 8 + Npgsql, migrations, JSONB         │
-└──────────────────────────────┬──────────────────────────────────────┘
-                               ▼
-                        PostgreSQL 16
-```
-
-### Backend (`src/backend`)
-- **Rfid.Domain** – POCO entities and the `Lifecycle` state-machine value object. No framework references.
-- **Rfid.Application** – services operating on `IAppDb` (an abstraction over the DbContext so services are testable with an in-memory provider).
-- **Rfid.Infrastructure** – `AppDbContext`, Npgsql mappings (JSONB for attributes/lifecycles/rule conditions), migrations.
-- **Rfid.Api** – controllers, JWT, SignalR `LiveHub` (broadcasts tag reads and alerts), Swagger, seed on startup.
-- **Rfid.Tests** – xUnit tests over the application layer.
-
-### Web (`src/web`)
-Vite + React 18 + TypeScript, React Router, TanStack Query. No heavyweight UI
-framework; a small design system in `src/ui`.
-
-### Handheld (`src/mobile`)
-Expo (React Native + TypeScript). The reader is abstracted behind `RfidReader`
-(`start/stopInventory`, `locate`, `write`, events). Drivers: **Simulated**
-(runs anywhere), **Zebra** (RFD40/RFD8500 via native module stub), **Chainway**
-(C72/C66/C61 via native module stub), **BLE generic**. Reads are buffered
-locally (SQLite) and synced in batches so the device works offline.
-
-## 3. Key flows
-
-### 3.1 Read → Item resolution
-1. A reader produces `(epc, tid?, rssi, antenna, ts)`.
-2. `TagResolver` finds `Tag` by EPC (falls back to TID) and its `Item`.
-3. Unknown EPCs are stored as `TagRead` with `ItemId = null` so they can be
-   commissioned later (or flagged as *unexpected*).
-
-### 3.2 Handheld operation
-`POST /api/operations` with `{type, fromLocationId?, toLocationId?, partyId?, lines:[{epc, qty?}]}`.
-`OperationProcessor` validates, resolves tags, applies the effect of the
-operation type (location/custody/state/quantity/container changes), writes one
-`ItemEvent` per affected item, runs rules, and returns per-line results
-(`Ok / Unknown / Unexpected / Rejected`).
-
-### 3.3 Fixed reader / portal
-`POST /api/ingest/reads` (batched) → `ReadIngestionService`:
-- Antenna → Location (+ direction) mapping decides whether the item **entered**
-  or **left** a zone.
-- Item `LastSeen*` updated; `Seen` / `Moved` events emitted with debounce.
-- Rules fire (e.g. *loss prevention*: item in state `OnFloor` seen at `Exit` →
-  alert; *FOD/tool control*: tool seen leaving hangar while checked out → alert).
-
-### 3.4 Stocktake
-Create a `Stocktake` for a location (+ optional item type). Expected = items
-whose current location is within that subtree. Handheld posts scanned EPCs in
-batches; the service reconciles **found / missing / unexpected** and can
-*apply* the result (move unexpected items in, mark missing as `Missing`).
-
-### 3.5 Rules
-`Rule { trigger: EventType, conditions: [{field, op, value}], action, params }`.
-Fields address the event and item (`item.state`, `item.cycleCount`,
-`item.expiryDate`, `toLocation.kind`, `event.data.direction` …). Actions:
-`CreateAlert`, `SetState`, `Webhook`. Rules are evaluated synchronously in the
-same unit of work so alerts are transactional with the event.
-
-## 4. Multi-tenancy & security
-- Every row carries `TenantId`; a global EF query filter scopes all reads.
-- JWT bearer auth; roles `Admin`, `Operator`, `Viewer`, `Device`.
-- Devices authenticate with a long-lived device token (role `Device`) limited to
-  ingestion and operation endpoints.
-
-## 5. Extending to a new vertical
-1. Add a `SolutionTemplate` JSON (item types + lifecycles + rules).
-2. (Optional) add a new `OperationType` if none of the existing ones fit — most
-   verticals need none.
-3. (Optional) add a mobile "workflow" screen that pre-fills an operation.
-
-## 6. Background services & integration (v1.1)
-
-| Component | Role |
-|---|---|
-| `IngestAdapters` + `VendorIngestController` | Normalise Impinj IoT Interface / Zebra IoT Connector / generic JSON into `ReadBatchRequest` |
-| `MqttIngestService` | Subscribes to the broker, matches topics to devices (`Config.mqttTopic`), feeds the same pipeline |
-| `PresenceService` + `PresenceSweeperService` | Zone sessions (enter/refresh/exit with dwell timeout), occupancy, muster, checkpoint timing |
-| `IntegrationService` + `IntegrationDispatcherService` | Cursor-based signed delivery of events/alerts to external endpoints with back-off |
-| `StocktakeScheduleService` + `StocktakeSchedulerService` | Opens scheduled stocktakes, auto-reconciles after a window |
-| `ReportService` | 12 cross-vertical reports (JSON/CSV) incl. depreciation |
-| `LabelService` + `RawPrinterClient` | ZPL rendering with RFID encode; raw 9100 printing |
-| `Gs1` | GRAI-96 / GIAI-96 encoders next to SGTIN-96 |
-| `TemplateProvisioner.ExportAsync/ApplyDefinitionAsync` | Per-tenant template export/import |
-
-Background jobs run per tenant inside an ambient scope (`AmbientContext`), so the same tenant-filtered
-`DbContext` and services are used in requests and jobs alike.
-
-### v1.2 additions
-
-| Component | Role |
-|---|---|
-| `Llrp/LlrpCodec`, `Llrp/LlrpClient`, `LlrpReaderService` | LLRP 1.0.1 binary codec (messages, TLV/TV parameters), inventory client, per-device supervisor |
-| `Positioning/Trilateration`, `PositionService` | RSSI → distance, least-squares x/y, floor-plan queries; hooked into ingestion |
-| `Integrations/PayloadFormatters` | Generic / SAP / Dynamics 365 / Maximo payload shapes; `IOAuthTokenProvider` for OAuth2 |
-| `Labels/LabelDesign`, `LabelCompiler` | Declarative label document → ZPL template |
-| Mobile `reader/Printer.ts` | Network (server) or Bluetooth (native module) label printing |
-
-### v1.3 additions
-
-| Component | Role |
-|---|---|
-| `LlrpConfigCodec` + client options | GET_READER_CAPABILITIES, per-antenna power/session config, GPI-triggered ROSpec, GPO writes, GPI events; `LlrpReaderService` exposes status and GPO control |
-| `PositionSmoother` / `KalmanTrack`, `ReadRequest.RangeM` | Range-aware trilateration and per-item Kalman smoothing |
-| `ImportService` | CSV/JSON asset-master upsert with dry run and reconciliation |
-| `PrintQueueService` + `PrintQueueWorkerService`, `PrintJob` | Durable print jobs, retries, reprint audit, label stock alerts |
-
-### v1.4 additions
-
-| Component | Role |
-|---|---|
-| `LeaseService`, `WorkerLease`, `ClusterNode` | DB leases with an optimistic-concurrency token; `TenantLoopService` jobs, `MqttIngestService` and per-reader `LlrpReaderService` connections run only on the lease holder |
-| `PersistentPositionSmoother`, `Item.PositionTrack` | Kalman state serialised on the item so any node continues the track |
-| `PositionFix`, `PositionService.HeatMapAsync/HistoryAsync/PruneAsync` | Movement-sampled position history → heat map, path replay, retention |
-| SignalR Redis backplane | `Redis:ConnectionString` → `AddStackExchangeRedis`; live updates fan out to every node |
-| `SsoOptions`, `SsoUserMapper`, `OidcClaimsTransformation` | Second JWT bearer scheme ("oidc"); external identity → platform user (JIT provisioning, group→role map); claims rewritten to the platform shape |
-| `UserSiteAccess`, `ISiteAccess`/`SiteAccess`, `PlatformClaims` | Site claims in the JWT; per-request scope that filters queries and enforces a minimum role per location |
-| `ClusterController`, `UserSitesController`, positions history endpoints | Admin visibility of nodes/leases; site-access editor; heat map/replay APIs |
-
-### Scaling out
+## 3. Modules and ownership
 
 ```
-            ┌────────── clients (web / handheld / readers) ──────────┐
-            │                  load balancer                         │
-     ┌──────┴──────┐    ┌─────────────┐    ┌─────────────┐
-     │  api node A │    │  api node B │    │  api node C │   ← identical containers
-     └──────┬──────┘    └──────┬──────┘    └──────┬──────┘
-            │   leases: job:presencesweeper → A, job:printqueueworker → B, llrp:<reader1> → C …
-            └──────────────┬──────────────┴──────────────┘
-                     PostgreSQL (state + leases)        Redis (SignalR backplane, optional)
+Rfid.Domain          entities, enums, lifecycle value object            (no framework refs)
+Rfid.Application     modules below, over IAppDb + ICurrentContext       (testable with InMemory EF)
+Rfid.Infrastructure  AppDbContext (Npgsql, JSONB), migrations, RLS, tenant connection interceptor
+Rfid.Api             controllers, auth (JWT + OIDC), SignalR hub, background hosts, transports
 ```
 
-Leases are renewed every job interval with a TTL of 3× the interval (readers: 90 s); a node that
-stops renewing loses its leases and another node takes over. Nothing else is node-local: JWTs are
-symmetric-key, position tracks and the print queue are in the database, and SignalR groups are
-shared through Redis when configured.
+`Rfid.Application` is organised by module. Namespaces are stable (`Rfid.Application.Services`
+for historical services); **folders declare ownership**:
 
-### v1.5 additions
+| Folder | Owns | Key types |
+|---|---|---|
+| `Contracts/` | Abstractions and DTOs shared by all modules | `IAppDb`, `ICurrentContext`, `ILivePublisher`, `OperationRequest`, `ReadBatchRequest` |
+| `Tracking/` | Reads → item state → events; presence | `TagResolver`, `ReadIngestionService`, `IngestAdapters`, `PresenceService` |
+| `Rtls/` | Positions from RSSI/ranges, smoothing, history | `PositionService`, `Trilateration`, `PositionSmoother` |
+| `Operations/` | Operation definitions and execution, containers, stocktakes, imports | `OperationCatalog`, `OperationDefinitions`, `OperationProcessor`, `ContainerRules`, `StocktakeService`, `StocktakeScheduleService`, `ImportService` |
+| `Rules/` | Event rules, alerts, notification routing, anomaly detection | `RuleEngine`, `NotificationService`, `AnomalyService` |
+| `Devices/` | Reader protocol clients, health, firmware | `Llrp/*`, `DeviceHealthService` |
+| `Encoding/` | GS1 encoding, serial pools, labels, print queue | `EncodingService`, `LabelService`, `LabelDesign`, `PrintQueueService` |
+| `Integrations/` | Outbound ERP/BI delivery, EPCIS, warehouse export | `IntegrationService`, `PayloadFormatters`, `EpcisService`, `WarehouseExportService` |
+| `Billing/` | Custody events → ledger → invoices | `BillingService` |
+| `Analytics/` | Dashboards, reports, analytics, maintenance forecasting | `DashboardService`, `ReportService`, `AnalyticsService`, `MaintenanceService` |
+| `Geo/` | GPS fixes and geofences | `GeoService` |
+| `Platform/` | Cross-cutting infrastructure | `Outbox`, `OutboxDispatcher`, `LeaseService`, `RetentionService` |
+| `Security/` | Site-level access, SSO mapping, hashing | `ISiteAccess`/`SiteAccess`, `SsoUserMapper`, `PasswordHasher` |
+| `Templates/` | Vertical catalogue and provisioning | `SolutionTemplateCatalog`, `TemplateProvisioner` |
 
-| Component | Role |
-|---|---|
-| `DeviceHealthService`, `DeviceHeartbeat`, `FirmwareRelease`/`FirmwareRollout` | Heartbeat SLAs → health state + alerts; uptime; firmware rollout state machine (Pending → Sent → Downloading → Installing → Done/Failed) |
-| `GeoService`, `GeoFence`, `GpsFix`, `GeoFenceState` | GPS ingestion, haversine/ray-casting containment, enter/exit/dwell transitions with events, alerts, rules and location moves |
-| `DashboardService`, `Dashboard`/`DashboardWidget` | Server-side widget evaluation for stored dashboards |
-| `NotificationService`, `INotificationSender`, `NotificationChannel`, `EscalationPolicy`, `NotificationLog` | Rule/catch-all routing, escalation steps, delivery audit; `HttpNotificationSender` implements SMTP / Twilio / Teams / Slack / webhook |
-| `WarehouseExportService`, `WarehouseExportRun` | Flat row models → Parquet (Parquet.Net) or CSV, day-partitioned landing zone, incremental watermarks |
-| `AnalyticsService` | Trend buckets, utilisation, dwell, inventory accuracy, alert response |
-| `MonitoringService`, `WarehouseExportJobService` | Lease-aware minute loop (health, dwell, escalation) and scheduled export |
+Dependency direction: `Tracking`, `Operations` and `Rules` are the core and depend only on
+`Contracts`/`Platform`. Every other folder depends on the core, never the reverse.
 
-### v1.6 additions
+```
+┌──────────────────────────┐   ┌────────────────────────────┐   ┌──────────────────────────┐
+│ React web (Vite + TS)    │   │ React Native handheld      │   │ Fixed readers / agents   │
+│ REST + SignalR           │   │ REST, offline queue        │   │ REST batches, MQTT, LLRP │
+└────────────┬─────────────┘   └─────────────┬──────────────┘   └────────────┬─────────────┘
+             └───────────────────────────────┼───────────────────────────────┘
+                                             ▼
+                     Rfid.Api  ── controllers · auth · LiveHub · background hosts
+                                             ▼
+                     Rfid.Application  ── Tracking · Operations · Rules ── modules
+                                             ▼
+                     Rfid.Infrastructure  ── EF Core / Npgsql · RLS · outbox nudge
+                                             ▼
+                          PostgreSQL 16  (state · events · outbox · leases)      Redis (optional SignalR backplane)
+```
 
-| Component | Role |
-|---|---|
-| `AnomalyService`, `Anomaly` | Baseline vs window statistics (z-scores) across six detectors; dedup, alerting, hour-of-day profile |
-| `Sscc96`, `EncodingService`, `SerialPool`, `EncodingBatch` | SSCC-96 codec; atomic serial allocation (concurrency token + retry); preview/commit modes tags · bind · items; `Tag.EncodingBatchId` |
-| `AuditMiddleware`, `AuditEntry` | Records mutating API calls after the action runs (route, entity id, status, redacted JSON body, IP, duration) |
-| `RetentionService`, `RetentionPolicy` | Per-dataset windows with defaults, previews and batched deletes; `RetentionJobService` every 6 h |
-| `AnomalyDetectionService` | Lease-aware detector loop (15 min) |
-| Web `i18n.tsx`, mobile `src/i18n` | String-keyed dictionaries with English fallback; language stored per browser/device |
-| Mobile `src/geo` | expo-location capture, fence geometry, GPS reporting per scanned EPC; `GeofenceScreen` |
+## 4. The unit of work and the outbox
 
-### v1.7 additions
+Every request or job does its work in one `DbContext` and commits with **one `SaveChanges`**;
+that call is the transaction boundary. Nothing may leave the process before it:
 
-| Component | Role |
-|---|---|
-| `Gs1ElementString`, `TagResolver` (barcode fallback), `Tag.Symbology` | Parse GS1-128 / DataMatrix / Digital Link content, derive candidate EPCs per prefix length, resolve barcode tags and identifiers in the same pipeline as RFID |
-| `BillingService`, `RateCard`, `LedgerEntry`, `Invoice`, `BillingCursor` | Custody events → ledger by rate card (idempotent watermark); per-party balances; invoice generation and lifecycle; `BillingAccrualService` hourly |
-| `PortalScopeMiddleware`, `User.PortalPartyId`, `PortalController` | Party-scoped read-only API (`/api/portal/*`) and web portal UI; portal claims block the rest of the API |
-| `MaintenanceService`, `MaintenanceForecast` | Weighted, explainable risk score with predicted service date; daily snapshots and alerts (`MaintenanceForecastService`) |
-| `EpcisService`, `EpcisCapture` | EPCIS 2.0 JSON-LD mapping (CBV, URNs, SGLN, bizTransactions), simple event query, capture → reads/operations |
-| Mobile `BarcodeScanScreen` | expo-camera scanning used by Lookup, Operations, Stocktake and Commission |
+- **Live pushes** (SignalR `event`/`alert`), **webhooks** (rule action and integrations'
+  single-shot sends) and **notifications** (e-mail/SMS/Teams/Slack) are written as rows in
+  `outbox` inside the same `SaveChanges` as the business change (`Platform/Outbox.cs`).
+- `OutboxDispatcher` (one node, lease `job:outbox`) delivers committed rows oldest-first with
+  exponential back-off (5 s·2ⁱ, capped at 1 h) and dead-letters after 8 attempts, keeping the
+  error for inspection. A `SaveChanges` interceptor nudges it in-process, so latency is
+  milliseconds on the committing node and ≤ 2 s elsewhere.
+- Delivery goes through two thin transports — `ILiveTransport` (SignalR) and
+  `IWebhookTransport` (HTTP) — plus `INotificationSender`. Application code never sends.
+- **Raw read fan-out** (`reads` on the hub) is the one direct send, and it happens *after*
+  commit: it is telemetry, not state.
 
-## 7. Roadmap
-- Reader edge agents (containerised on-reader ingestion, store-and-forward).
-- Digital twin views per site (3D racks/zones).
-- Advanced RTLS (UWB TDoA, BLE AoA).
-- Workflow builder for guided handheld tasks.
-- Marketplace of vertical apps built on the templates.
+Result: clients, ERPs and people can only ever observe committed state; all retries follow one
+policy; tests can assert "nothing was sent" before dispatch.
+
+## 5. Operations
+
+An **operation definition** is data:
+
+```
+OperationDefinition {
+  code            "Sterilise"                     // key for history, lifecycles and the API
+  baseType        ProcessStage                    // built-in family (compatibility, defaults)
+  eventType       StateChanged                    // event written per affected item
+  requires        { toLocation, party, container, targetState, quantity, fromStates[] }
+  effects         [ SetState, Move{optional}, SetAttribute{key:lastSterilisedAt, value:"{now}"} ]
+  eventData       { bizStep: "..." }              // merged into every event's Data
+  itemTypeCodes   [ "TRAY", "INSTRUMENT" ]        // empty = any type
+}
+```
+
+The **effect vocabulary is closed** (`OperationEffectKinds`): `Move`, `SetCustodian`,
+`ClearCustodian`, `SetDueBack`, `ClearDueBack`, `SetState`, `IncrementCycle`, `RecordSeen`,
+`RecordInspection`, `Activate`, `Dispose`, `Pack`, `Unpack`, `AdjustQuantity`, `SetAttribute`.
+Each effect is implemented once in `OperationProcessor.RunEffectAsync` and tested once.
+Effects flagged `optional` are skipped when their input (destination, party) is absent instead
+of failing. `SetAttribute` values may use the placeholders `{now}`, `{user}`, `{party}`,
+`{location}`.
+
+The **14 built-in operations are definitions too** (`OperationCatalog.BuiltIn`); there is one
+execution path. Templates carry `OperationDefinitions` (installed per tenant when the template
+is applied, and synced into already-installed tenants on startup), and administrators can add
+their own through `/api/operations/definitions`. Definitions are validated (known effects, a
+non-Commission base type, requirements consistent with effects, built-in codes reserved).
+
+**Execution** (`OperationProcessor.ProcessAsync`):
+1. Resolve the definition (`request.operation` code, else `request.type`); replay detection by
+   `clientId` returns the stored result.
+2. Validate request-level requirements; reject a disposed container.
+3. For each line: resolve the tag (EPC, TID, barcode or identifier via `TagResolver`); check
+   `itemTypeCodes` / `fromStates`; **lifecycle step** — the item type's transition keyed by the
+   operation *code* (custom codes fall back to the base type's transitions); run effects in
+   order; write one event (plus `StateChanged` when the state moved and the main event is
+   something else). Container moves recurse through `MoveAsync`, and every child move is an
+   event in its own right (rules fire, outbox written, `OperationId` set).
+4. One `SaveChanges`.
+
+**Containers** (`ContainerRules`): nesting is a forest via `ParentItemId`, depth ≤ 32; packing
+into self or a descendant is refused at write time (Pack effect and manual edits alike);
+disposed containers cannot receive items; moving a container moves the subtree.
+
+**Lifecycles** are enforced everywhere state is written: operations, `RuleAction.SetState` and
+manual edits all refuse states the type does not know.
+
+## 6. Tracking pipeline
+
+```
+reads  ──►  TagRead (raw, per read)  ──►  item.LastSeen*  ──►  Seen / Moved events (debounced)  ──►  rules  ──►  outbox
+                 │                              │
+                 └──► PositionService (x/y)      └──► PresenceService (zone sessions, enter/exit, dwell)
+```
+
+- `ReadBatchRequest { deviceId?, sessionId?, batchId?, reads[] }` from handhelds, vendor
+  adapters (Impinj, Zebra, generic JSON), MQTT and the LLRP client all enter
+  `ReadIngestionService.IngestAsync`.
+- Antenna → location (+ direction). `In` moves the item into the zone, `Out` moves it to the
+  zone's parent (`data.direction = "Out"`), `None` uses best-RSSI zone resolution with a
+  per-item debounce window. Presence exits (dwell timeout) emit the same `Moved{direction:
+  "Out"}` shape, so one rule vocabulary covers portals and presence.
+- `batchId` makes a batch idempotent: the key is committed with the reads and a replay is
+  acknowledged (`duplicate: true`) without re-emitting events.
+- Unknown EPCs are stored (`ItemId = null`) for later commissioning.
+
+### Server vs edge
+The server owns interpretation (location, state, events, rules). Protocol handling is
+transport: the LLRP client, MQTT subscriber and vendor adapters live in `Devices/` and
+`Tracking/IngestAdapters` and produce the same `ReadBatchRequest`; they can run in the API
+(lease-coordinated, one connection owner per reader) or in a future edge agent that posts
+batches with `batchId`s. Nothing downstream depends on where the reads came from.
+
+## 7. Rules and notifications
+
+`Rule { trigger: EventType, conditions[{field, op, value}], action, params, severity }`.
+Fields address the event, item, item type, locations, party and `data.*`; actions are
+`CreateAlert`, `SetState` (lifecycle-validated), `Webhook`. Rules run synchronously inside the
+unit of work; alerts are rows; alert fan-out, webhooks and notifications go through the outbox.
+Notification channels, catch-all routing and escalation policies live in `Rules/`.
+
+## 8. Multi-tenancy and security
+
+Two independent layers isolate tenants:
+
+1. **Application** — every tenant-scoped entity derives from `TenantEntity`; `AppDbContext`
+   applies a global query filter on `ICurrentContext.TenantId` and stamps inserts. Requests get
+   the tenant from the JWT; background jobs run per tenant inside `AmbientContext.Use(tenantId)`.
+   `IgnoreQueryFilters()` is used only for pre-authentication lookups, cluster-wide loops and the
+   outbox dispatcher.
+2. **Database** — every table with a `TenantId` has Postgres **row-level security** with the
+   `tenant_isolation` policy over `current_setting('app.tenant_id')`. `TenantConnectionInterceptor`
+   sets it on every opened connection; a context without a tenant runs in the explicit
+   **system scope** `'*'`. Coverage is derived from the EF model (`RowLevelSecurity.TenantTables`),
+   re-applied at startup, and asserted by a test for every `TenantEntity`. The API connects as
+   the non-owner role `rfid_app` (owners bypass RLS); migrations run as the owner
+   (`ConnectionStrings:Migrations`). Tables without `TenantId` (`tenants`, `solution_templates`,
+   `worker_leases`, `operation_lines`, `stocktake_lines`) are global or reached only through a
+   tenant-scoped parent.
+
+**Authentication**: JWT for users (`Admin`/`Operator`/`Viewer`), device tokens for readers
+(`Device`), OIDC as a second bearer scheme with JIT provisioning. Login takes an optional
+`tenantCode` and refuses an e-mail that exists in more than one tenant.
+
+**Site RBAC** (`ISiteAccess`): users may be restricted to site subtrees with a role per site;
+items, locations, devices, alerts, events, raw reads and operation/stocktake writes (single and
+batch) are filtered/enforced by `Path`.
+
+**Portals**: party-scoped read-only principals see only `/api/portal/*`.
+
+**Audit**: `AuditMiddleware` records every mutating call (route, entity, status, redacted body).
+**Retention**: per-dataset policies with defaults; `item_events` are kept unless a policy says
+otherwise.
+
+## 9. Idempotency and offline
+
+| Channel | Key | Where stored | Behaviour on replay |
+|---|---|---|---|
+| Operations (single or `/batch`) | `clientId` | `operations.ClientId` (unique per tenant) | Original result returned |
+| Read batches | `batchId` (+ device) | `idempotency_keys` (scope `read-batch`), same commit | Original counts returned, `duplicate: true` |
+| Integrations | per-endpoint cursor | `integration_endpoints` | At-least-once |
+| Billing | watermark | `billing_cursors` | Exactly-once accrual |
+
+The handheld queue (`src/mobile/src/store/queue.ts`) stamps `clientId` before the first send,
+flushes FIFO in batches of 50, matches results by `clientId`, backs off exponentially per item
+with a hard cap, and keeps rejected operations visible.
+
+## 10. Background work and scale-out
+
+All nodes are identical. Work that must run once cluster-wide takes a **database lease**
+(`worker_leases`, TTL 3× interval): tenant loops (`job:*` — presence sweep, schedules, print
+queue, monitoring, retention, anomaly detection, billing, maintenance, warehouse export,
+**outbox**), the MQTT subscriber, and each LLRP reader connection (`llrp:{deviceId}`). Position
+tracks live on the item row; SignalR uses a Redis backplane when configured. Losing a node loses
+nothing: leases expire and another node continues.
+
+## 11. Data growth
+
+High-volume tables: `tag_reads`, `item_events`, `position_fixes`, `gps_fixes`,
+`device_heartbeats`, `outbox`. Reads carry a BRIN index on `ReadAt`; events index
+`(ItemId, OccurredAt DESC)`. Retention policies prune everything except events by default;
+`outbox` rows are pruned once processed. Native range partitioning is the next step when a
+tenant exceeds ~10⁸ rows in a table and needs no code change. Heavy analytics belong in the
+customer's warehouse via the Parquet export; in-app analytics stay operational.
+
+## 12. Clients
+
+- **Web** (`src/web`, Vite + React + TS, TanStack Query): every screen is a view over the
+  primitives. The operation form derives its inputs from the operation definition
+  (`requires` + `effects`), so template-defined operations need no UI change.
+- **Handheld** (`src/mobile`, Expo): reader abstraction (`RfidReader`) over Zebra/Chainway/BLE/
+  simulated drivers, camera barcodes, offline cache of master data, floor plans and operation
+  definitions, store-and-forward queue.
+
+## 13. Adding a vertical
+
+1. Add a `SolutionTemplate`: item types with lifecycles, rules, and **operation definitions**
+   composed from the effect vocabulary (see `medical-assets`: `Decontaminate`, `Sterilise`;
+   `tool-tracking`: `Calibrate`).
+2. Key lifecycle transitions by your operation codes.
+3. Optionally a demo scenario.
+
+No C# is needed. If a vertical needs an effect the vocabulary lacks, that is a platform
+change: add the effect once, with a test, and every vertical can use it.
+
+## 14. Testing
+
+`Rfid.Tests` runs the real services over the real EF model with the InMemory provider (99
+tests). `ConsolidationTests` pins the architectural invariants: outbox-before-delivery, replay
+idempotency, container cycles and subtree moves, definition-composed operations, lifecycle
+validation, direction vocabulary, and RLS coverage of every tenant entity.

@@ -261,42 +261,6 @@ public class VendorIngestController : ControllerBase
     }
 }
 
-[ApiController, Route("api/tags"), Authorize]
-public class TagEncodeController : ControllerBase
-{
-    public record EncodeRequest(string Scheme, string CompanyPrefix, string? Reference, ulong Serial, int Filter = 0);
-
-    /// <summary>Encodes a GS1 EPC: scheme = SGTIN-96 (reference = item ref), GRAI-96 (reference = asset type), GIAI-96 (serial = asset reference).</summary>
-    [HttpPost("encode"), Authorize(Policy = "Operator")]
-    public IActionResult Encode(EncodeRequest r)
-    {
-        try
-        {
-            var epc = r.Scheme.ToUpperInvariant() switch
-            {
-                "SGTIN-96" or "SGTIN" => Sgtin96.Encode(r.CompanyPrefix, r.Reference ?? "", r.Serial, r.Filter),
-                "GRAI-96" or "GRAI" => Gs1.EncodeGrai96(r.CompanyPrefix, r.Reference ?? "", r.Serial, r.Filter),
-                "GIAI-96" or "GIAI" => Gs1.EncodeGiai96(r.CompanyPrefix, r.Serial, r.Filter),
-                _ => throw new ArgumentException("Unknown scheme; use SGTIN-96, GRAI-96 or GIAI-96"),
-            };
-            return Ok(new { epc, scheme = Gs1.Scheme(epc) });
-        }
-        catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
-    }
-
-    [HttpGet("decode-any/{epc}")]
-    public IActionResult DecodeAny(string epc)
-    {
-        var e = TagResolver.Normalize(epc);
-        return Gs1.Scheme(e) switch
-        {
-            "SGTIN-96" => Ok(new { scheme = "SGTIN-96", value = Sgtin96.Decode(e) }),
-            "GRAI-96" => Ok(new { scheme = "GRAI-96", value = Gs1.DecodeGrai96(e) }),
-            "GIAI-96" => Ok(new { scheme = "GIAI-96", value = Gs1.DecodeGiai96(e) }),
-            var s => Ok(new { scheme = s }),
-        };
-    }
-}
 
 [ApiController, Route("api/templates"), Authorize(Policy = "Admin")]
 public class TemplateExchangeController : ControllerBase

@@ -1,7 +1,9 @@
 # Data Model
 
-All tables carry `TenantId` (scoped by a global query filter) and `CreatedAt`.
-JSONB columns are marked *(jsonb)*.
+All tenant-scoped tables carry `TenantId` and `CreatedAt`. Isolation is enforced twice: an EF
+global query filter in the application and a Postgres **row-level-security** policy
+(`tenant_isolation`, over `current_setting('app.tenant_id')`) on every table that has a
+`TenantId` — see `ARCHITECTURE.md` §8. JSONB columns are marked *(jsonb)*.
 
 ## Identity & organisation
 | Table | Key columns |
@@ -31,7 +33,8 @@ JSONB columns are marked *(jsonb)*.
 ## Transactions & history
 | Table | Key columns |
 |---|---|
-| `operations` | Id, Type (Receive/Transfer/Issue/Return/Count/Dispatch/Inspect/Maintain/Dispose/Pack/Unpack/ProcessStage/Commission/Adjust), Status (Draft/Completed/Cancelled), FromLocationId, ToLocationId, PartyId, ContainerItemId, TargetState, Reference, Notes, DeviceId, UserId, StartedAt, CompletedAt |
+| `operation_definitions` | Id, Code (unique per tenant), Name, Description, BaseType (built-in family), EventType, Effects *(jsonb [{kind, params}])*, Requires *(jsonb {toLocation, party, container, targetState, quantity, fromStates})*, EventData *(jsonb)*, ItemTypeCodes *(jsonb)*, Enabled, IsBuiltIn, Vertical, Icon — tenant/template-defined operations; the 14 built-ins are code-defined in `OperationCatalog` and not stored |
+| `operations` | Id, Type (base type: Receive/Transfer/Issue/Return/Count/Dispatch/Inspect/Maintain/Dispose/Pack/Unpack/ProcessStage/Commission/Adjust), **DefinitionCode** (the operation that ran, e.g. `Sterilise`), **ClientId** (idempotency key, unique per tenant), Status (Draft/Completed/Cancelled), FromLocationId, ToLocationId, PartyId, ContainerItemId, TargetState, Reference, Notes, DeviceId, UserId, StartedAt, CompletedAt |
 | `operation_lines` | Id, OperationId, Epc, ItemId, Quantity, Result (Ok/Unknown/Unexpected/Rejected), Message |
 | `item_events` | Id, ItemId, Type (Created/Seen/Moved/CustodyChanged/StateChanged/Counted/QuantityChanged/Packed/Unpacked/Inspected/Maintained/Disposed/Commissioned/Alert), FromLocationId, ToLocationId, FromPartyId, ToPartyId, FromState, ToState, OperationId, DeviceId, UserId, OccurredAt, Data *(jsonb)* |
 | `tag_reads` | Id, Epc, Tid, ItemId, DeviceId, AntennaPort, Rssi, ReadAt, LocationId, Source (Handheld/Fixed/Manual) — raw, high-volume, partition-friendly |
@@ -43,7 +46,14 @@ JSONB columns are marked *(jsonb)*.
 |---|---|
 | `rules` | Id, Name, Enabled, Trigger (event type), Conditions *(jsonb [{field, op, value}])*, Action (CreateAlert/SetState/Webhook), Params *(jsonb)*, Severity |
 | `alerts` | Id, RuleId, ItemId, LocationId, Severity (Info/Warning/Critical), Message, Status (Open/Acknowledged/Closed), RaisedAt, AcknowledgedBy, ClosedAt |
-| `solution_templates` | Id, Code, Name, Vertical, Description, Definition *(jsonb)* |
+| `solution_templates` | Id, Code, Name, Vertical, Description, Definition *(jsonb: itemTypes, rules, operationDefinitions, …)* — global, not tenant-scoped |
+
+## Platform
+| Table | Key columns |
+|---|---|
+| `outbox` | Id, Kind (`live.event` / `live.alert` / `webhook` / `notification`), Destination, Payload *(json)*, Attempts, NextAttemptAt, ProcessedAt, Error — written in the same commit as the state change, delivered by `OutboxDispatcher`; processed rows pruned by retention |
+| `idempotency_keys` | Id, Scope (`read-batch`, …), Key, Response *(json)* — unique per tenant/scope/key; committed with the work it guards |
+| `worker_leases`, `cluster_nodes` | Lease name, holder node, expiry, concurrency token — cluster coordination, global |
 
 ## Lifecycle definition (jsonb on `item_types`)
 ```json
@@ -59,8 +69,12 @@ JSONB columns are marked *(jsonb)*.
   ]
 }
 ```
-An operation of type `on` moves items along the matching transition. If a type
-has no lifecycle, states are free-form and `ProcessStage` sets `TargetState`.
+`on` is an **operation code**: a built-in type name (`Issue`, `ProcessStage`, …) or a template/
+tenant-defined operation (`"on": "Sterilise"`). Running that operation moves items along the
+matching transition; a custom operation whose code the lifecycle does not mention falls back to
+its base type's transitions. If a type has no lifecycle, states are free-form and `SetState`
+effects write `TargetState`. Every writer of `State` (operations, rules, manual edits) refuses a
+state that is not in `states`.
 
 ## Indexes worth noting
 - `tags(TenantId, Epc)` unique; `tags(Tid)`.
@@ -68,3 +82,5 @@ has no lifecycle, states are free-form and `ProcessStage` sets `TargetState`.
   `items(ExpiryDate)`, `items(NextInspectionDue)`.
 - `locations(Path)` text_pattern_ops for subtree (`LIKE '/1/4/%'`).
 - `item_events(ItemId, OccurredAt DESC)`; `tag_reads(ReadAt)` (BRIN).
+- `operations(TenantId, ClientId)` unique where not null; `operation_definitions(TenantId, Code)` unique.
+- `outbox(ProcessedAt, NextAttemptAt, CreatedAt)`; `idempotency_keys(TenantId, Scope, Key)` unique.

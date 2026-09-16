@@ -35,14 +35,26 @@ builder.Services.AddMemoryCache();
 builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.WithOrigins(cfg.GetSection("Cors:Origins").Get<string[]>() ?? new[] { "http://localhost:5173" })
     .AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
 
-builder.Services.AddDbContext<AppDbContext>(o => o.UseNpgsql(cfg.GetConnectionString("Default")));
+// Tenant isolation is enforced twice: EF global query filters (ICurrentContext) and Postgres row-level security,
+// pinned per connection by TenantConnectionInterceptor. Connect as the non-owner role (rfid_app) for the latter to apply.
+builder.Services.AddDbContext<AppDbContext>((sp, o) => o.UseNpgsql(cfg.GetConnectionString("Default")).AddInterceptors(
+    new Rfid.Api.Auth.OutboxNudgeInterceptor(sp.GetRequiredService<Rfid.Api.Background.OutboxSignal>()),
+    new TenantConnectionInterceptor(sp.GetRequiredService<ICurrentContext>())));
 builder.Services.AddScoped<IAppDb>(sp => sp.GetRequiredService<AppDbContext>());
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentContext, RequestOrAmbientContext>();
-builder.Services.AddScoped<ILivePublisher, SignalRLivePublisher>();
-builder.Services.AddHttpClient<IWebhookDispatcher, HttpWebhookDispatcher>();
+// Transactional outbox: events, alerts, webhooks and notifications are written with the business state and delivered after commit.
+builder.Services.AddSingleton<Rfid.Api.Background.OutboxSignal>();
+builder.Services.AddSingleton<Rfid.Application.Platform.ILiveTransport, SignalRLiveTransport>();
+builder.Services.AddHttpClient<Rfid.Application.Platform.IWebhookTransport, HttpWebhookTransport>();
+builder.Services.AddScoped<Rfid.Application.Platform.Outbox>();
+builder.Services.AddScoped<ILivePublisher, Rfid.Application.Platform.OutboxLivePublisher>();
+builder.Services.AddScoped<IWebhookDispatcher, Rfid.Application.Platform.OutboxWebhookDispatcher>();
+builder.Services.AddScoped<Rfid.Application.Platform.OutboxDispatcher>();
+builder.Services.AddHostedService<Rfid.Api.Background.OutboxDispatcherService>();
 builder.Services.AddScoped<TagResolver>();
 builder.Services.AddScoped<RuleEngine>(sp => new RuleEngine(sp.GetRequiredService<IAppDb>(), sp.GetRequiredService<ICurrentContext>(), sp.GetRequiredService<ILivePublisher>(), sp.GetRequiredService<IWebhookDispatcher>(), sp.GetRequiredService<NotificationService>()));
+builder.Services.AddScoped<Rfid.Application.Operations.OperationDefinitions>();
 builder.Services.AddScoped<OperationProcessor>();
 builder.Services.AddScoped<StocktakeService>();
 builder.Services.AddScoped<ReadIngestionService>();
@@ -69,7 +81,7 @@ builder.Services.AddScoped<Rfid.Infrastructure.Persistence.Demo.DemoSeeder>();
 builder.Services.AddSingleton<JwtService>();
 builder.Services.AddScoped<LeaseService>();
 builder.Services.AddHttpClient<INotificationSender, Rfid.Api.Background.HttpNotificationSender>();
-builder.Services.AddScoped<NotificationService>(sp => new NotificationService(sp.GetRequiredService<IAppDb>(), sp.GetRequiredService<INotificationSender>()) { BaseUrl = cfg["Notifications:BaseUrl"] ?? cfg.GetSection("Cors:Origins").Get<string[]>()?.FirstOrDefault() });
+builder.Services.AddScoped<NotificationService>(sp => new NotificationService(sp.GetRequiredService<IAppDb>(), sp.GetRequiredService<INotificationSender>(), sp.GetRequiredService<Rfid.Application.Platform.Outbox>()) { BaseUrl = cfg["Notifications:BaseUrl"] ?? cfg.GetSection("Cors:Origins").Get<string[]>()?.FirstOrDefault() });
 builder.Services.AddScoped<DeviceHealthService>(sp => new DeviceHealthService(sp.GetRequiredService<IAppDb>(), sp.GetRequiredService<ICurrentContext>(), sp.GetRequiredService<NotificationService>()) { DefaultSlaMinutes = cfg.GetValue("DeviceHealth:DefaultSlaMinutes", 15) });
 builder.Services.AddScoped<GeoService>(sp => new GeoService(sp.GetRequiredService<IAppDb>(), sp.GetRequiredService<ICurrentContext>(), sp.GetRequiredService<RuleEngine>(), sp.GetRequiredService<ILivePublisher>(), sp.GetRequiredService<NotificationService>()));
 builder.Services.AddScoped<DashboardService>();
@@ -153,7 +165,17 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok", node = ClusterNode.I
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    if (cfg.GetValue("Database:AutoMigrate", true)) await db.Database.MigrateAsync();
+    if (cfg.GetValue("Database:AutoMigrate", true))
+    {
+        // Migrations (DDL, RLS policies, grants) run as the schema owner; the runtime connection may be a restricted role.
+        var migrationsCs = cfg.GetConnectionString("Migrations");
+        if (!string.IsNullOrWhiteSpace(migrationsCs))
+        {
+            await using var owner = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(migrationsCs).Options, scope.ServiceProvider.GetRequiredService<ICurrentContext>());
+            await owner.Database.MigrateAsync(); await RowLevelSecurity.EnsureAsync(owner);
+        }
+        else { await db.Database.MigrateAsync(); await RowLevelSecurity.EnsureAsync(db); }
+    }
     if (cfg.GetValue("Database:Seed", true))
     {
         var results = await SeedData.EnsureSeededAsync(scope.ServiceProvider.GetRequiredService<DbContextOptions<AppDbContext>>(),
@@ -161,6 +183,14 @@ using (var scope = app.Services.CreateScope())
         var log = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
         foreach (var r in results.Where(r => !r.Skipped))
             log.LogInformation("Seeded scenario {Scenario}: {Items} items, {Ops} operations, {Reads} reads, {Alerts} alerts{Warn}", r.Scenario, r.Items, r.Operations, r.Reads, r.Alerts, r.Warnings.Count > 0 ? " · warnings: " + string.Join("; ", r.Warnings) : "");
+        // Templates evolve with the platform (e.g. operation definitions): bring already-installed templates up to date, per tenant.
+        foreach (var tenantId in await db.Tenants.IgnoreQueryFilters().Select(t => t.Id).ToListAsync())
+        {
+            using var _ = AmbientContext.Use(tenantId);
+            using var tenantScope = app.Services.CreateScope();
+            foreach (var r in await tenantScope.ServiceProvider.GetRequiredService<TemplateProvisioner>().SyncInstalledAsync())
+                log.LogInformation("Template {Template} synced for tenant {Tenant}: +{Types} types, +{Rules} rules, +{Ops} operations", r.Template, tenantId, r.ItemTypesCreated, r.RulesCreated, r.OperationsCreated);
+        }
     }
 }
 

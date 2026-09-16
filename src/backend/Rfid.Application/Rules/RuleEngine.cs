@@ -64,6 +64,8 @@ public class RuleEngine
                 case RuleAction.SetState:
                 {
                     var target = rule.Params.TryGetValue("state", out var s) ? s?.ToString() : null;
+                    var lifecycle = c.ItemType?.Lifecycle;
+                    if (!string.IsNullOrEmpty(target) && lifecycle != null && !lifecycle.IsValidState(target)) break; // never write a state the type does not know
                     if (!string.IsNullOrEmpty(target) && !string.Equals(c.Item.State, target, StringComparison.OrdinalIgnoreCase))
                     {
                         var prev = c.Item.State;

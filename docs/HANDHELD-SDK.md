@@ -59,9 +59,18 @@ class ZebraRfidModule(ctx: ReactApplicationContext) : ReactContextBaseJavaModule
 
 ## Offline behaviour
 
-Operations run through `runOrQueue()`: online → executed immediately; network failure → stored in
-AsyncStorage with a `clientId` and replayed via `POST /api/operations/batch` (idempotent on the server).
-Business rejections (4xx) are never queued — the operator sees them immediately.
+Operations run through `runOrQueue()` (`src/store/queue.ts`). Every request is stamped with a
+`clientId` **before** its first send, so any retry — online or from the queue — is idempotent on
+the server (`operations.ClientId`). On network failure the request is parked in AsyncStorage and
+replayed in FIFO batches of 50 via `POST /api/operations/batch`; results are matched by
+`clientId`, never by position. Transport failures back off exponentially per item (5 s → 10 min)
+and give up after 20 attempts; business rejections (4xx, or `ok: false` in a batch) are never
+retried but are kept in a capped *rejected* list (`readRejected()`) so the operator can see what
+did not apply. `sync(force)` ignores the back-off for a manual "Sync now".
+
+Operation definitions (`GET /api/operations/definitions`) are cached with the other master data,
+so template-defined operations appear on the Operations screen offline; the screen derives its
+fields from each definition's `requires` and `effects`.
 
 ## Fixed readers
 

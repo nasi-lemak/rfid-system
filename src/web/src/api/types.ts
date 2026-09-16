@@ -34,10 +34,14 @@ export interface Alert { id: Guid; ruleId?: Guid | null; itemId?: Guid | null; i
 export interface RuleCondition { field: string; op: string; value: unknown }
 export interface Rule { id: Guid; name: string; enabled: boolean; trigger: string; conditions: RuleCondition[]; action: string; params: Record<string, unknown>; severity: string; vertical?: string | null; notifyChannelIds?: Guid[]; escalationPolicyId?: Guid | null }
 
-export interface OperationSummary { id: Guid; type: string; status: string; fromLocation?: string | null; toLocation?: string | null; party?: string | null; targetState?: string | null; reference?: string | null; notes?: string | null; user?: string | null; startedAt: string; completedAt?: string | null; lineCount: number; ok: number; rejected: number; unknown: number }
+export interface OperationSummary { id: Guid; type: string; definitionCode?: string | null; status: string; fromLocation?: string | null; toLocation?: string | null; party?: string | null; targetState?: string | null; reference?: string | null; notes?: string | null; user?: string | null; startedAt: string; completedAt?: string | null; lineCount: number; ok: number; rejected: number; unknown: number }
 export interface OperationLineResult { epc?: string | null; itemId?: Guid | null; itemName?: string | null; result: string; message?: string | null; newState?: string | null }
+export interface OperationEffect { kind: string; params: Record<string, unknown> }
+export interface OperationRequirements { toLocation: boolean; party: boolean; container: boolean; targetState: boolean; quantity: boolean; fromStates: string[] }
+/** An operation the tenant can run: a built-in or a template/tenant-defined composition of effects. */
+export interface OperationDefinition { id: Guid; code: string; name: string; description: string; baseType: string; eventType: string; effects: OperationEffect[]; requires: OperationRequirements; itemTypeCodes: string[]; enabled: boolean; isBuiltIn: boolean; vertical?: string | null; icon?: string | null }
 export interface OperationResult { operationId: Guid; status: string; ok: number; unknown: number; rejected: number; lines: OperationLineResult[] }
-export interface OperationRequest { type: string; fromLocationId?: Guid; toLocationId?: Guid; partyId?: Guid; containerItemId?: Guid; targetState?: string; reference?: string; notes?: string; dueBackAt?: string; lines: { epc?: string; itemId?: Guid; identifier?: string; quantity?: number; newItem?: { itemTypeId: Guid; identifier: string; name: string; attributes?: Record<string, unknown> } }[] }
+export interface OperationRequest { type: string; operation?: string; fromLocationId?: Guid; toLocationId?: Guid; partyId?: Guid; containerItemId?: Guid; targetState?: string; reference?: string; notes?: string; dueBackAt?: string; lines: { epc?: string; itemId?: Guid; identifier?: string; quantity?: number; newItem?: { itemTypeId: Guid; identifier: string; name: string; attributes?: Record<string, unknown> } }[] }
 
 export interface StocktakeSummary { id: Guid; name: string; status: string; expected: number; found: number; missing: number; unexpected: number; unknown: number }
 export interface StocktakeListRow { summary: StocktakeSummary; locationId: Guid; location?: string; itemTypeId?: Guid | null; startedAt: string; completedAt?: string | null }

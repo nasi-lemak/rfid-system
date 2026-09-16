@@ -10,6 +10,7 @@ public class ProvisionResult
     public string Template { get; set; } = "";
     public int ItemTypesCreated { get; set; }
     public int RulesCreated { get; set; }
+    public int OperationsCreated { get; set; }
     public int Skipped { get; set; }
 }
 
@@ -29,6 +30,24 @@ public class TemplateProvisioner
     }
 
     /// <summary>Exports the tenant's current item types and rules as a template definition (for backup, copying to another tenant, or contributing a new vertical).</summary>
+    /// <summary>
+    /// Transition path for tenants that installed a template before it carried operation definitions (or rules):
+    /// re-applies every template whose item types are all present. Idempotent – existing types/rules/operations are skipped.
+    /// </summary>
+    public async Task<List<ProvisionResult>> SyncInstalledAsync(CancellationToken ct = default)
+    {
+        var results = new List<ProvisionResult>();
+        var codes = (await _db.ItemTypes.Select(t => t.Code).ToListAsync(ct)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (codes.Count == 0) return results;
+        foreach (var tpl in await _db.SolutionTemplates.ToListAsync(ct))
+        {
+            if (tpl.Definition.ItemTypes.Count == 0 || !tpl.Definition.ItemTypes.All(t => codes.Contains(t.Code))) continue;
+            var r = await ApplyDefinitionAsync(tpl.Code, tpl.Vertical, tpl.Definition, ct);
+            if (r.ItemTypesCreated + r.RulesCreated + r.OperationsCreated > 0) results.Add(r);
+        }
+        return results;
+    }
+
     public async Task<TemplateDefinition> ExportAsync(CancellationToken ct = default)
     {
         var types = await _db.ItemTypes.OrderBy(t => t.Name).ToListAsync(ct);
@@ -38,6 +57,8 @@ public class TemplateProvisioner
             ItemTypes = types.Select(t => new ItemType { Name = t.Name, Code = t.Code, Category = t.Category, IsContainer = t.IsContainer, TracksExpiry = t.TracksExpiry, TracksCycles = t.TracksCycles, MaxCycles = t.MaxCycles, RequiresInspection = t.RequiresInspection, InspectionIntervalDays = t.InspectionIntervalDays, ReorderPoint = t.ReorderPoint, Unit = t.Unit, AttributeSchema = t.AttributeSchema, Lifecycle = t.Lifecycle, UsefulLifeMonths = t.UsefulLifeMonths, LabelTemplate = t.LabelTemplate, Vertical = t.Vertical }).ToList(),
             Rules = rules.Select(r => new Rule { Name = r.Name, Enabled = r.Enabled, Trigger = r.Trigger, Conditions = r.Conditions, Action = r.Action, Params = r.Params, Severity = r.Severity }).ToList(),
             Operations = Enum.GetValues<OperationType>().ToList(),
+            OperationDefinitions = (await _db.OperationDefinitions.Where(d => !d.IsBuiltIn).OrderBy(d => d.Code).ToListAsync(ct))
+                .Select(d => new OperationDefinition { Code = d.Code, Name = d.Name, Description = d.Description, BaseType = d.BaseType, EventType = d.EventType, Effects = d.Effects, Requires = d.Requires, EventData = d.EventData, ItemTypeCodes = d.ItemTypeCodes, Enabled = d.Enabled, Icon = d.Icon }).ToList(),
         };
     }
 
@@ -76,6 +97,21 @@ public class TemplateProvisioner
                 Action = r.Action, Params = r.Params, Severity = r.Severity, Vertical = tpl.Vertical,
             });
             result.RulesCreated++;
+        }
+        // Vertical operations are configuration, not code: each one is a named composition of built-in effects.
+        var existingOps = await _db.OperationDefinitions.Select(d => d.Code).ToListAsync(ct);
+        foreach (var d in tpl.Definition.OperationDefinitions)
+        {
+            if (existingOps.Contains(d.Code, StringComparer.OrdinalIgnoreCase) || Operations.OperationCatalog.Get(d.Code) != null) { result.Skipped++; continue; }
+            var errors = Operations.OperationCatalog.Validate(d);
+            if (errors.Count > 0) throw new DomainException($"Template operation '{d.Code}' is invalid: {string.Join("; ", errors)}");
+            _db.OperationDefinitions.Add(new OperationDefinition
+            {
+                TenantId = _ctx.TenantId, Code = d.Code, Name = d.Name, Description = d.Description, BaseType = d.BaseType, EventType = d.EventType,
+                Effects = d.Effects, Requires = d.Requires, EventData = d.EventData, Enabled = d.Enabled, Icon = d.Icon, Vertical = tpl.Vertical,
+                ItemTypeCodes = d.ItemTypeCodes.Count > 0 ? d.ItemTypeCodes : tpl.Definition.ItemTypes.Select(t => t.Code).ToList(),
+            });
+            result.OperationsCreated++;
         }
         await _db.SaveChangesAsync(ct);
         return result;
