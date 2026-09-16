@@ -1,0 +1,15 @@
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+COPY Rfid.Protocols/Rfid.Protocols.csproj Rfid.Protocols/
+COPY Rfid.Edge/Rfid.Edge.csproj Rfid.Edge/
+RUN dotnet restore Rfid.Edge/Rfid.Edge.csproj
+COPY Rfid.Protocols Rfid.Protocols
+COPY Rfid.Edge Rfid.Edge
+RUN dotnet publish Rfid.Edge/Rfid.Edge.csproj -c Release -o /app --no-restore
+
+FROM mcr.microsoft.com/dotnet/runtime:8.0
+WORKDIR /app
+COPY --from=build /app .
+VOLUME ["/queue"]
+ENV Edge__Queue__Path=/queue
+ENTRYPOINT ["dotnet", "Rfid.Edge.dll"]

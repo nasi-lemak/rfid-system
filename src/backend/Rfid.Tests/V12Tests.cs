@@ -1,3 +1,4 @@
+using Rfid.Protocols;
 using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
@@ -5,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Rfid.Application.Contracts;
 using Rfid.Application.Integrations;
 using Rfid.Application.Labels;
-using Rfid.Application.Llrp;
+using Rfid.Protocols.Llrp;
 using Rfid.Application.Positioning;
 using Rfid.Application.Services;
 using Rfid.Domain;
@@ -152,12 +153,15 @@ public class ErpFormatterAndLabelDesignTests
         var t = new FakeTransport();
         var ep = new IntegrationEndpoint { TenantId = h.Ctx.TenantId, Name = "x", Url = "https://x", EventCursor = DateTime.UtcNow.AddMinutes(-5), AlertCursor = DateTime.UtcNow, AuthType = IntegrationAuth.OAuth2ClientCredentials, TokenUrl = "https://idp/token", ClientId = "c1", ClientSecret = "s", Format = IntegrationFormat.Dynamics365 };
         h.Db.IntegrationEndpoints.Add(ep); await h.SaveAsync();
-        var svc = new IntegrationService(h.Db, t, new FakeOAuth());
-        Assert.Equal(1, await svc.DispatchAsync(ep, DateTime.UtcNow.AddSeconds(1)));
+        var svc = new IntegrationService(h.Db, h.Outbox);
+        var dispatcher = new Rfid.Application.Platform.OutboxDispatcher(h.Db, new Rfid.Application.Platform.IOutboxHandler[] { new IntegrationOutboxHandler(h.Db, t, new FakeOAuth()) });
+        Assert.Equal(1, await svc.EnqueueAsync(ep, DateTime.UtcNow.AddSeconds(1)));
+        Assert.Equal(1, (await dispatcher.DispatchAsync(DateTime.UtcNow.AddSeconds(1))).Delivered);
         Assert.Equal("Bearer tok-c1", t.Headers!["Authorization"]);
         ep.AuthType = IntegrationAuth.Basic; ep.Username = "u"; ep.Password = "p";
         await h.Ops.ProcessAsync(new OperationRequest { Type = OperationType.Count, Lines = { new() { Epc = tag.Epc } } });
-        Assert.Equal(1, await svc.DispatchAsync(ep, DateTime.UtcNow.AddSeconds(2)));
+        Assert.Equal(1, await svc.EnqueueAsync(ep, DateTime.UtcNow.AddSeconds(2)));
+        Assert.Equal(1, (await dispatcher.DispatchAsync(DateTime.UtcNow.AddSeconds(2))).Delivered);
         Assert.Equal("Basic " + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("u:p")), t.Headers!["Authorization"]);
     }
 

@@ -18,7 +18,8 @@ public enum TagTechnology { UhfGen2, HfNfc, Lf, Ble, Active, Barcode }
 
 public enum TagStatus { Unassigned, Active, Retired }
 
-public enum DeviceKind { Handheld, Fixed, Portal, Gate, Cabinet, Shelf, Locker, Tunnel, Vehicle, Printer }
+/// <summary>Gateway = an edge agent that drives readers on site and forwards batches (store-and-forward).</summary>
+public enum DeviceKind { Handheld, Fixed, Portal, Gate, Cabinet, Shelf, Locker, Tunnel, Vehicle, Printer, Gateway }
 
 public enum AntennaDirection { None, In, Out }
 
@@ -45,7 +46,10 @@ public enum StocktakeStatus { Open, Reconciled, Applied, Cancelled }
 
 public enum StocktakeResult { Pending, Found, Missing, Unexpected, Unknown }
 
-public enum RuleAction { CreateAlert, SetState, Webhook, Notify }
+public enum RuleAction { CreateAlert, SetState, Webhook, Notify, RunOperation }
+
+/// <summary>Event rules react to one item event; schedule rules sweep items on an interval (not seen for N hours, inspection due …).</summary>
+public enum RuleKind { Event, Schedule }
 
 public enum Severity { Info, Warning, Critical }
 

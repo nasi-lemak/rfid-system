@@ -50,7 +50,13 @@ public class IntegrationEndpoint : TenantEntity
     public bool Enabled { get; set; } = true;
     /// <summary>Empty = all event types.</summary>
     public List<ItemEventType> EventTypes { get; set; } = new();
+    /// <summary>Empty = all item types; otherwise only events/alerts about items of these type codes.</summary>
+    public List<string> ItemTypeCodes { get; set; } = new();
+    /// <summary>When set, only events at (or about items currently in) this site subtree.</summary>
+    public Guid? SiteLocationId { get; set; }
     public bool IncludeAlerts { get; set; } = true;
+    /// <summary>The outbox message currently carrying this endpoint's next batch; one in flight at a time keeps ordering.</summary>
+    public Guid? InFlightMessageId { get; set; }
     public Dictionary<string, object?> Headers { get; set; } = new();
     public int BatchSize { get; set; } = 100;
     public DateTime EventCursor { get; set; } = DateTime.UtcNow;

@@ -263,6 +263,7 @@ public class AppDbContext : DbContext, IAppDb
         {
             e.ToTable("integration_endpoints");
             e.Property(i => i.EventTypes).HasColumnType(isNpgsql ? "jsonb" : "text").HasConversion(JsonConv<List<ItemEventType>>(json), JsonComparer<List<ItemEventType>>());
+            e.Property(i => i.ItemTypeCodes).HasColumnType(isNpgsql ? "jsonb" : "text").HasConversion(JsonConv<List<string>>(json), JsonComparer<List<string>>());
             e.Property(i => i.Headers).HasColumnType(isNpgsql ? "jsonb" : "text").HasConversion(JsonConv<Dictionary<string, object?>>(json), JsonComparer<Dictionary<string, object?>>());
             e.Property(i => i.Mapping).HasColumnType(isNpgsql ? "jsonb" : "text").HasConversion(JsonConv<Dictionary<string, object?>>(json), JsonComparer<Dictionary<string, object?>>());
             e.Property(i => i.Format).HasConversion<string>();

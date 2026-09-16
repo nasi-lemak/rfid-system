@@ -1,6 +1,6 @@
 using System.Buffers.Binary;
 
-namespace Rfid.Application.Llrp;
+namespace Rfid.Protocols.Llrp;
 
 /// <summary>LLRP 1.0.1 (EPCglobal Low Level Reader Protocol) message types used by the client.</summary>
 public static class LlrpMsg

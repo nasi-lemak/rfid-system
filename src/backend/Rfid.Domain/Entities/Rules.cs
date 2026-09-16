@@ -4,7 +4,12 @@ public class Rule : TenantEntity
 {
     public string Name { get; set; } = "";
     public bool Enabled { get; set; } = true;
+    public RuleKind Kind { get; set; } = RuleKind.Event;
+    /// <summary>Event rules: the event type that triggers evaluation.</summary>
     public ItemEventType Trigger { get; set; }
+    /// <summary>Schedule rules: how often every item is checked against the conditions.</summary>
+    public int IntervalMinutes { get; set; } = 60;
+    public DateTime? LastRunAt { get; set; }
     public List<RuleCondition> Conditions { get; set; } = new();
     public RuleAction Action { get; set; } = RuleAction.CreateAlert;
     public Dictionary<string, object?> Params { get; set; } = new();

@@ -2,6 +2,8 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 COPY Rfid.sln ./
 COPY Rfid.Domain/Rfid.Domain.csproj Rfid.Domain/
+COPY Rfid.Protocols/Rfid.Protocols.csproj Rfid.Protocols/
+COPY Rfid.Edge/Rfid.Edge.csproj Rfid.Edge/
 COPY Rfid.Application/Rfid.Application.csproj Rfid.Application/
 COPY Rfid.Infrastructure/Rfid.Infrastructure.csproj Rfid.Infrastructure/
 COPY Rfid.Api/Rfid.Api.csproj Rfid.Api/

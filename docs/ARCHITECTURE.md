@@ -37,9 +37,11 @@ module that reads or writes these primitives.
 
 ```
 Rfid.Domain          entities, enums, lifecycle value object            (no framework refs)
+Rfid.Protocols       reader wire formats + the ingest contract           (LLRP codec/client, vendor adapters, ReadBatchRequest)
 Rfid.Application     modules below, over IAppDb + ICurrentContext       (testable with InMemory EF)
 Rfid.Infrastructure  AppDbContext (Npgsql, JSONB), migrations, RLS, tenant connection interceptor
 Rfid.Api             controllers, auth (JWT + OIDC), SignalR hub, background hosts, transports
+Rfid.Edge            on-site reader agent: LLRP/pushes → durable queue → store-and-forward   (references Protocols only)
 ```
 
 `Rfid.Application` is organised by module. Namespaces are stable (`Rfid.Application.Services`
@@ -50,15 +52,15 @@ for historical services); **folders declare ownership**:
 | `Contracts/` | Abstractions and DTOs shared by all modules | `IAppDb`, `ICurrentContext`, `ILivePublisher`, `OperationRequest`, `ReadBatchRequest` |
 | `Tracking/` | Reads → item state → events; presence | `TagResolver`, `ReadIngestionService`, `IngestAdapters`, `PresenceService` |
 | `Rtls/` | Positions from RSSI/ranges, smoothing, history | `PositionService`, `Trilateration`, `PositionSmoother` |
-| `Operations/` | Operation definitions and execution, containers, stocktakes, imports | `OperationCatalog`, `OperationDefinitions`, `OperationProcessor`, `ContainerRules`, `StocktakeService`, `StocktakeScheduleService`, `ImportService` |
-| `Rules/` | Event rules, alerts, notification routing, anomaly detection | `RuleEngine`, `NotificationService`, `AnomalyService` |
-| `Devices/` | Reader protocol clients, health, firmware | `Llrp/*`, `DeviceHealthService` |
+| `Operations/` | Operation definitions and execution, containers, stocktakes, imports, rule-requested operations | `OperationCatalog`, `OperationDefinitions`, `OperationProcessor`, `ContainerRules`, `RunOperationOutboxHandler`/`IOperationRunner`, `StocktakeService`, `StocktakeScheduleService`, `ImportService` |
+| `Rules/` | Event and schedule rules, alerts, notification routing, anomaly detection | `RuleEngine` (`EvaluateAsync`, `EvaluateScheduledAsync`), `NotificationService`, `AnomalyService` |
+| `Devices/` | Reader health, firmware (protocol clients live in `Rfid.Protocols`) | `DeviceHealthService` |
 | `Encoding/` | GS1 encoding, serial pools, labels, print queue | `EncodingService`, `LabelService`, `LabelDesign`, `PrintQueueService` |
-| `Integrations/` | Outbound ERP/BI delivery, EPCIS, warehouse export | `IntegrationService`, `PayloadFormatters`, `EpcisService`, `WarehouseExportService` |
+| `Integrations/` | Outbound ERP/BI delivery (via the outbox), EPCIS, warehouse export | `IntegrationService`, `IntegrationOutboxHandler`, `PayloadFormatters`, `EpcisService`, `WarehouseExportService` |
 | `Billing/` | Custody events → ledger → invoices | `BillingService` |
 | `Analytics/` | Dashboards, reports, analytics, maintenance forecasting | `DashboardService`, `ReportService`, `AnalyticsService`, `MaintenanceService` |
 | `Geo/` | GPS fixes and geofences | `GeoService` |
-| `Platform/` | Cross-cutting infrastructure | `Outbox`, `OutboxDispatcher`, `LeaseService`, `RetentionService` |
+| `Platform/` | Cross-cutting infrastructure | `Outbox`, `OutboxDispatcher` + `IOutboxHandler`, `LeaseService`, `RetentionService` |
 | `Security/` | Site-level access, SSO mapping, hashing | `ISiteAccess`/`SiteAccess`, `SsoUserMapper`, `PasswordHasher` |
 | `Templates/` | Vertical catalogue and provisioning | `SolutionTemplateCatalog`, `TemplateProvisioner` |
 
@@ -93,8 +95,11 @@ that call is the transaction boundary. Nothing may leave the process before it:
   exponential back-off (5 s·2ⁱ, capped at 1 h) and dead-letters after 8 attempts, keeping the
   error for inspection. A `SaveChanges` interceptor nudges it in-process, so latency is
   milliseconds on the committing node and ≤ 2 s elsewhere.
-- Delivery goes through two thin transports — `ILiveTransport` (SignalR) and
-  `IWebhookTransport` (HTTP) — plus `INotificationSender`. Application code never sends.
+- Delivery is by **kind → handler** (`IOutboxHandler`): `live.event`/`live.alert` (SignalR
+  transport), `webhook` (HTTP), `notification` (channel senders), `integration` (ERP batch for one
+  endpoint, cursor advanced on success) and `operation.run` (an operation a rule asked for, executed
+  in a fresh tenant scope). Modules register their own handlers; the dispatcher only knows the retry
+  policy. Application code never sends.
 - **Raw read fan-out** (`reads` on the hub) is the one direct send, and it happens *after*
   commit: it is telemetry, not state.
 
@@ -169,20 +174,41 @@ reads  ──►  TagRead (raw, per read)  ──►  item.LastSeen*  ──► 
   acknowledged (`duplicate: true`) without re-emitting events.
 - Unknown EPCs are stored (`ItemId = null`) for later commissioning.
 
+- **Late reads.** `readAt` is authoritative. A read older than the item's `LastSeenAt` (a batch
+  replayed after newer ones) is stored as raw history and counted as `late`, but never moves state
+  or emits events — so store-and-forward can deliver out of order without regressing locations.
+
 ### Server vs edge
 The server owns interpretation (location, state, events, rules). Protocol handling is
-transport: the LLRP client, MQTT subscriber and vendor adapters live in `Devices/` and
-`Tracking/IngestAdapters` and produce the same `ReadBatchRequest`; they can run in the API
-(lease-coordinated, one connection owner per reader) or in a future edge agent that posts
-batches with `batchId`s. Nothing downstream depends on where the reads came from.
+transport and lives in `Rfid.Protocols` (LLRP codec/client, Impinj/Zebra/generic adapters, the
+ingest contract), shared by two hosts:
+
+- the **API** (`LlrpReaderService`, `MqttIngestService`, vendor ingest endpoints) for sites with a
+  reliable link — one connection owner per reader, coordinated by leases;
+- the **edge agent** (`Rfid.Edge`, see `EDGE-AGENT.md`) for sites that must survive WAN loss: it
+  drives readers locally, queues batches on disk and forwards them with `batchId = agent:seq`.
+  Readers marked `edgeManaged` are skipped by the server's supervisor.
+
+Nothing downstream depends on where the reads came from.
 
 ## 7. Rules and notifications
 
-`Rule { trigger: EventType, conditions[{field, op, value}], action, params, severity }`.
-Fields address the event, item, item type, locations, party and `data.*`; actions are
-`CreateAlert`, `SetState` (lifecycle-validated), `Webhook`. Rules run synchronously inside the
-unit of work; alerts are rows; alert fan-out, webhooks and notifications go through the outbox.
-Notification channels, catch-all routing and escalation policies live in `Rules/`.
+`Rule { kind: Event | Schedule, trigger: EventType, intervalMinutes, conditions[{field, op, value}], action, params, severity }`.
+
+- **Event rules** run synchronously inside the unit of work that produced the event. Fields address
+  the event, item, item type, locations, party and `data.*`.
+- **Schedule rules** are swept once a minute per tenant (`RuleSchedulerService`, lease `job:rulescheduler`)
+  and evaluate the same conditions against every live item — with time-derived fields such as
+  `item.hoursSinceSeen`, `item.daysUntilInspection`, `item.cyclesRemaining`, `item.daysOverdue`.
+  Alert actions are de-duplicated per (rule, item) while an alert stays open, so a sweep never storms.
+- **Actions** (closed set): `CreateAlert`, `Notify`, `SetState` (lifecycle-validated), `Webhook`
+  and `RunOperation` — any operation definition (`Dispose` at max cycles, `Maintain` after a failed
+  inspection). `RunOperation` is written to the outbox and executed **after** the triggering unit of
+  work committed, in its own tenant scope, idempotent per message; it never re-enters the processor
+  mid-operation.
+
+Alerts are rows; alert fan-out, webhooks and notifications go through the outbox. Notification
+channels, catch-all routing and escalation policies live in `Rules/`.
 
 ## 8. Multi-tenancy and security
 
@@ -223,7 +249,8 @@ otherwise.
 |---|---|---|---|
 | Operations (single or `/batch`) | `clientId` | `operations.ClientId` (unique per tenant) | Original result returned |
 | Read batches | `batchId` (+ device) | `idempotency_keys` (scope `read-batch`), same commit | Original counts returned, `duplicate: true` |
-| Integrations | per-endpoint cursor | `integration_endpoints` | At-least-once |
+| Integrations | per-endpoint cursor + one outbox message in flight | `integration_endpoints.EventCursor/InFlightMessageId` | At-least-once, ordered per endpoint; cursor moves only on success |
+| Rule-requested operations | outbox message id | `operations.ClientId = rule:{rule}:{message}` | Exactly once per message |
 | Billing | watermark | `billing_cursors` | Exactly-once accrual |
 
 The handheld queue (`src/mobile/src/store/queue.ts`) stamps `clientId` before the first send,
@@ -273,4 +300,7 @@ change: add the effect once, with a test, and every vertical can use it.
 `Rfid.Tests` runs the real services over the real EF model with the InMemory provider (99
 tests). `ConsolidationTests` pins the architectural invariants: outbox-before-delivery, replay
 idempotency, container cycles and subtree moves, definition-composed operations, lifecycle
-validation, direction vocabulary, and RLS coverage of every tenant entity.
+validation, direction vocabulary, and RLS coverage of every tenant entity. `EdgeAgentTests` cover
+the durable queue, ordered forwarding, poison handling and late-read safety; `FoundationTests`
+cover schedule rules, `RunOperation` through the outbox, integration filters and EPCIS vocabulary
+from definitions.

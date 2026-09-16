@@ -95,6 +95,30 @@ public class IntegrationDispatcherService : TenantLoopService
     }
 }
 
+/// <summary>Sweeps schedule rules (not seen for N hours, inspection due, max cycles reached …) once a minute per tenant.</summary>
+public class RuleSchedulerService : TenantLoopService
+{
+    public RuleSchedulerService(IServiceScopeFactory s, ILogger<RuleSchedulerService> l, IConfiguration cfg) : base(s, l, TimeSpan.FromSeconds(cfg.GetValue("Rules:ScheduleSweepSeconds", 60))) { }
+    protected override async Task RunForTenantAsync(IServiceProvider sp, Guid tenantId, CancellationToken ct)
+    {
+        var r = await sp.GetRequiredService<RuleEngine>().EvaluateScheduledAsync(DateTime.UtcNow, ct);
+        if (r.RulesRun > 0) Log.LogInformation("Schedule rules for tenant {Tenant}: {Rules} rule(s), {Matched} match(es), {Alerts} alert(s), {Skipped} already open", tenantId, r.RulesRun, r.ItemsMatched, r.AlertsRaised, r.Skipped);
+    }
+}
+
+/// <summary>Runs a rule-requested operation in its own tenant-scoped unit of work (the outbox dispatcher itself runs in system scope).</summary>
+public class ScopedOperationRunner : Rfid.Application.Operations.IOperationRunner
+{
+    private readonly IServiceScopeFactory _scopes;
+    public ScopedOperationRunner(IServiceScopeFactory scopes) => _scopes = scopes;
+    public async Task<Rfid.Application.Contracts.OperationResult> RunAsync(Guid tenantId, Rfid.Application.Contracts.OperationRequest request, CancellationToken ct = default)
+    {
+        using var _ = AmbientContext.Use(tenantId);
+        using var scope = _scopes.CreateScope();
+        return await scope.ServiceProvider.GetRequiredService<OperationProcessor>().ProcessAsync(request, ct);
+    }
+}
+
 public class PrintQueueWorkerService : TenantLoopService
 {
     public PrintQueueWorkerService(IServiceScopeFactory s, ILogger<PrintQueueWorkerService> l) : base(s, l, TimeSpan.FromSeconds(5)) { }

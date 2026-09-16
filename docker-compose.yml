@@ -35,6 +35,20 @@ services:
     volumes: [ "warehouse:/warehouse" ]
     ports: [ "5080:8080" ]
 
+  # On-site reader agent (store-and-forward). Start with `docker compose --profile edge up`; set EDGE_DEVICE_TOKEN to a
+  # Gateway device's provisioning token and configure readers via Edge__Readers__0__DeviceId / __Host …
+  edge:
+    build: { context: ./src/backend, dockerfile: Dockerfile.edge }
+    profiles: [ "edge" ]
+    depends_on: [ api ]
+    environment:
+      Edge__AgentId: "${EDGE_AGENT_ID:-edge-1}"
+      Edge__Server__Url: "http://api:8080"
+      Edge__Server__DeviceToken: "${EDGE_DEVICE_TOKEN:-}"
+      Edge__Listen: "http://0.0.0.0:8090/"
+    volumes: [ "edgequeue:/queue" ]
+    ports: [ "8090:8090" ]
+
   web:
     build: ./src/web
     depends_on: [ api ]
@@ -43,3 +57,4 @@ services:
 volumes:
   pgdata:
   warehouse:
+  edgequeue:

@@ -44,14 +44,15 @@ global query filter in the application and a Postgres **row-level-security** pol
 ## Rules
 | Table | Key columns |
 |---|---|
-| `rules` | Id, Name, Enabled, Trigger (event type), Conditions *(jsonb [{field, op, value}])*, Action (CreateAlert/SetState/Webhook), Params *(jsonb)*, Severity |
+| `rules` | Id, Name, Enabled, **Kind** (Event/Schedule), Trigger (event type; event rules), **IntervalMinutes**, **LastRunAt** (schedule rules), Conditions *(jsonb [{field, op, value}])*, Action (CreateAlert/SetState/Webhook/Notify/**RunOperation**), Params *(jsonb)*, Severity, NotifyChannelIds *(jsonb)*, EscalationPolicyId |
 | `alerts` | Id, RuleId, ItemId, LocationId, Severity (Info/Warning/Critical), Message, Status (Open/Acknowledged/Closed), RaisedAt, AcknowledgedBy, ClosedAt |
 | `solution_templates` | Id, Code, Name, Vertical, Description, Definition *(jsonb: itemTypes, rules, operationDefinitions, …)* — global, not tenant-scoped |
 
 ## Platform
 | Table | Key columns |
 |---|---|
-| `outbox` | Id, Kind (`live.event` / `live.alert` / `webhook` / `notification`), Destination, Payload *(json)*, Attempts, NextAttemptAt, ProcessedAt, Error — written in the same commit as the state change, delivered by `OutboxDispatcher`; processed rows pruned by retention |
+| `integration_endpoints` | Id, Name, Url, Secret, Enabled, EventTypes *(jsonb)*, **ItemTypeCodes** *(jsonb)*, **SiteLocationId**, IncludeAlerts, Headers *(jsonb)*, BatchSize, EventCursor, AlertCursor, **InFlightMessageId**, LastDeliveryAt, LastError, FailureCount, NextAttemptAt, DeliveredCount, Format, AuthType + credentials, Mapping *(jsonb)* |
+| `outbox` | Id, Kind (`live.event` / `live.alert` / `webhook` / `notification` / `integration` / `operation.run`), Destination, Payload *(json)*, Attempts, NextAttemptAt, ProcessedAt, Error — written in the same commit as the state change, delivered by `OutboxDispatcher`; processed rows pruned by retention |
 | `idempotency_keys` | Id, Scope (`read-batch`, …), Key, Response *(json)* — unique per tenant/scope/key; committed with the work it guards |
 | `worker_leases`, `cluster_nodes` | Lease name, holder node, expiry, concurrency token — cluster coordination, global |
 

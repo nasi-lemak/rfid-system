@@ -1,3 +1,4 @@
+using Rfid.Protocols;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
@@ -16,7 +17,18 @@ public class EpcisService
 {
     private readonly IAppDb _db; private readonly ICurrentContext _ctx; private readonly ReadIngestionService? _ingest; private readonly OperationProcessor? _ops;
     public string BaseUrl { get; set; } = "https://rfid-platform.local";
-    public EpcisService(IAppDb db, ICurrentContext ctx, ReadIngestionService? ingest = null, OperationProcessor? ops = null) { _db = db; _ctx = ctx; _ingest = ingest; _ops = ops; }
+    private readonly Operations.OperationDefinitions? _definitions;
+    public EpcisService(IAppDb db, ICurrentContext ctx, ReadIngestionService? ingest = null, OperationProcessor? ops = null, Operations.OperationDefinitions? definitions = null) { _db = db; _ctx = ctx; _ingest = ingest; _ops = ops; _definitions = definitions; }
+
+    /// <summary>Inbound bizStep → operation: the tenant's or built-in definition whose EventData.bizStep matches, else Transfer.</summary>
+    public async Task<string> OperationForBizStepAsync(string bizStep, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(bizStep)) return OperationType.Transfer.ToString();
+        var defs = _definitions != null ? await _definitions.ListAsync(ct) : Operations.OperationCatalog.BuiltIn.ToList();
+        var match = defs.Where(d => d.Enabled && d.BaseType != OperationType.Commission && d.EventData.TryGetValue("bizStep", out var v) && string.Equals(v?.ToString(), bizStep, StringComparison.OrdinalIgnoreCase))
+                        .OrderBy(d => d.IsBuiltIn ? 1 : 0).FirstOrDefault();   // tenant/template definitions win over built-ins
+        return match?.Code ?? OperationType.Transfer.ToString();
+    }
 
     public const string Context = "https://ref.gs1.org/standards/epcis/2.0.0/epcis-context.jsonld";
 
@@ -30,7 +42,19 @@ public class EpcisService
         return TagResolver.IsHexEpc(epc) ? $"urn:epc:raw:{epc.Length * 4}.x{epc}" : $"urn:epc:id:code:{Uri.EscapeDataString(epc)}";
     }
     public string LocationUrn(Location? l) => l == null ? "" : l.Attributes.TryGetValue("sgln", out var sg) && sg != null ? $"urn:epc:id:sgln:{sg}" : $"{BaseUrl.TrimEnd('/')}/locations/{l.Id}";
-    public static (string bizStep, string disposition, string action) Cbv(ItemEvent e) => e.Type switch
+    /// <summary>
+    /// CBV vocabulary for an event. The operation definition that produced the event may carry <c>bizStep</c> /
+    /// <c>disposition</c> in its EventData (merged into the event's Data), which wins; otherwise the event type's default.
+    /// </summary>
+    public static (string bizStep, string disposition, string action) Cbv(ItemEvent e)
+    {
+        var (bizStep, disposition, action) = DefaultCbv(e);
+        if (e.Data.TryGetValue("bizStep", out var bs) && bs != null && !string.IsNullOrWhiteSpace(bs.ToString())) bizStep = Strip(bs.ToString()!, "BizStep");
+        if (e.Data.TryGetValue("disposition", out var ds) && ds != null && !string.IsNullOrWhiteSpace(ds.ToString())) disposition = Strip(ds.ToString()!, "Disp");
+        return (bizStep, disposition, action);
+    }
+
+    public static (string bizStep, string disposition, string action) DefaultCbv(ItemEvent e) => e.Type switch
     {
         ItemEventType.Created or ItemEventType.Commissioned => ("commissioning", "active", "ADD"),
         ItemEventType.Seen => ("inspecting", "in_progress", "OBSERVE"),
@@ -145,8 +169,8 @@ public class EpcisService
                 var bizStep = Strip(ev["bizStep"]?.ToString() ?? "", "BizStep");
                 if (_ops != null && loc != null && (action != "OBSERVE" || bizStep is "receiving" or "shipping" or "storing"))
                 {
-                    var opType = bizStep switch { "receiving" => OperationType.Receive, "shipping" => OperationType.Dispatch, "destroying" => OperationType.Dispose, _ => OperationType.Transfer };
-                    var r = await _ops.ProcessAsync(new OperationRequest { Type = opType, ToLocationId = loc.Id, Reference = ev["bizTransactionList"]?.AsArray().FirstOrDefault()?["bizTransaction"]?.ToString() ?? $"EPCIS {ev["eventID"]}", Lines = epcs.Select(e => new OperationLineRequest { Epc = e }).ToList() }, ct);
+                    var opCode = await OperationForBizStepAsync(bizStep, ct);
+                    var r = await _ops.ProcessAsync(new OperationRequest { Operation = opCode, ToLocationId = loc.Id, Reference = ev["bizTransactionList"]?.AsArray().FirstOrDefault()?["bizTransaction"]?.ToString() ?? $"EPCIS {ev["eventID"]}", Lines = epcs.Select(e => new OperationLineRequest { Epc = e }).ToList() }, ct);
                     applied += r.Ok; if (r.Unknown > 0) errors.Add($"{ev["eventID"]}: {r.Unknown} unknown EPC(s)");
                 }
                 else if (_ingest != null)

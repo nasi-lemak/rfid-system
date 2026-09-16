@@ -1,3 +1,4 @@
+using Rfid.Protocols;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -218,13 +219,14 @@ public class RulesController : ControllerBase
     public async Task<IActionResult> List() => Ok(await _db.Rules.OrderBy(r => r.Name).ToListAsync());
 
     [HttpPost, Authorize(Policy = "Admin")]
-    public async Task<IActionResult> Create(Rule r) { r.Id = Guid.NewGuid(); r.TenantId = _ctx.TenantId; r.CreatedAt = DateTime.UtcNow; _db.Rules.Add(r); await _db.SaveChangesAsync(); return Ok(r); }
+    public async Task<IActionResult> Create(Rule r) { r.Id = Guid.NewGuid(); r.TenantId = _ctx.TenantId; r.CreatedAt = DateTime.UtcNow; r.IntervalMinutes = Math.Max(1, r.IntervalMinutes); r.LastRunAt = null; _db.Rules.Add(r); await _db.SaveChangesAsync(); return Ok(r); }
 
     [HttpPut("{id:guid}"), Authorize(Policy = "Admin")]
     public async Task<IActionResult> Update(Guid id, Rule r)
     {
         var e = await _db.Rules.FindAsync(id); if (e == null) return NotFound();
-        e.Name = r.Name; e.Enabled = r.Enabled; e.Trigger = r.Trigger; e.Conditions = r.Conditions; e.Action = r.Action; e.Params = r.Params; e.Severity = r.Severity; e.NotifyChannelIds = r.NotifyChannelIds; e.EscalationPolicyId = r.EscalationPolicyId;
+        e.Name = r.Name; e.Enabled = r.Enabled; e.Kind = r.Kind; e.Trigger = r.Trigger; e.IntervalMinutes = Math.Max(1, r.IntervalMinutes); e.Conditions = r.Conditions; e.Action = r.Action; e.Params = r.Params; e.Severity = r.Severity; e.NotifyChannelIds = r.NotifyChannelIds; e.EscalationPolicyId = r.EscalationPolicyId;
+        if (e.Kind == RuleKind.Schedule) e.LastRunAt = null; // re-evaluate soon after an edit
         await _db.SaveChangesAsync(); return Ok(e);
     }
 

@@ -1,8 +1,8 @@
 using System.Globalization;
 using System.Text.Json;
-using Rfid.Application.Contracts;
 
-namespace Rfid.Application.Services;
+
+namespace Rfid.Protocols;
 
 /// <summary>
 /// Normalises vendor reader payloads into <see cref="ReadBatchRequest"/>. Supported:

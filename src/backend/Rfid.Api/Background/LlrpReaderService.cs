@@ -1,8 +1,9 @@
+using Rfid.Protocols;
 using Microsoft.EntityFrameworkCore;
 using Rfid.Api.Auth;
 using Rfid.Application.Cluster;
 using Rfid.Application.Contracts;
-using Rfid.Application.Llrp;
+using Rfid.Protocols.Llrp;
 using Rfid.Application.Services;
 using Rfid.Domain;
 using Rfid.Domain.Entities;
@@ -43,6 +44,8 @@ public class LlrpReaderService : BackgroundService
     {
         if (!d.Config.TryGetValue("llrpHost", out var h) || string.IsNullOrWhiteSpace(h?.ToString())) return null;
         if (d.Config.TryGetValue("llrpEnabled", out var en) && en?.ToString()?.Equals("false", StringComparison.OrdinalIgnoreCase) == true) return null;
+        // A reader driven by an on-site edge agent is never also driven from the server.
+        if (d.Config.TryGetValue("edgeManaged", out var em) && em?.ToString()?.Equals("true", StringComparison.OrdinalIgnoreCase) == true) return null;
         var port = d.Config.TryGetValue("llrpPort", out var p) && int.TryParse(p?.ToString(), out var pi) ? pi : 5084;
         return (h!.ToString()!, port);
     }

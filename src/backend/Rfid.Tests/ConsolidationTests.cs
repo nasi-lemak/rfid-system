@@ -1,3 +1,4 @@
+using Rfid.Protocols;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Rfid.Application.Contracts;

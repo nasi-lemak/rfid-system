@@ -1,6 +1,6 @@
 using System.Net.Sockets;
 
-namespace Rfid.Application.Llrp;
+namespace Rfid.Protocols.Llrp;
 
 /// <summary>
 /// Minimal LLRP client: connects to a reader (default port 5084), configures a continuous Gen2 inventory

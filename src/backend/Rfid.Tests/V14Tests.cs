@@ -1,3 +1,4 @@
+using Rfid.Protocols;
 using Microsoft.EntityFrameworkCore;
 using Rfid.Application.Cluster;
 using Rfid.Application.Contracts;

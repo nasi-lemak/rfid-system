@@ -20,6 +20,7 @@ public class TestHost
 {
     public FixedContext Ctx { get; } = new();
     public AppDbContext Db { get; }
+    public Rfid.Application.Platform.Outbox Outbox { get; }
     public RuleEngine Rules { get; }
     public OperationProcessor Ops { get; }
     public StocktakeService Stocktakes { get; }
@@ -31,7 +32,8 @@ public class TestHost
         var opts = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase("t-" + Guid.NewGuid()).Options;
         Db = new AppDbContext(opts, Ctx);
         var resolver = new TagResolver(Db);
-        Rules = new RuleEngine(Db, Ctx, new NullLivePublisher(), new NullWebhookDispatcher());
+        Outbox = new Rfid.Application.Platform.Outbox(Db, Ctx);
+        Rules = new RuleEngine(Db, Ctx, new NullLivePublisher(), new NullWebhookDispatcher(), null, Outbox);
         Ops = new OperationProcessor(Db, Ctx, resolver, Rules, new NullLivePublisher(), new Rfid.Application.Operations.OperationDefinitions(Db));
         Stocktakes = new StocktakeService(Db, Ctx, resolver, Rules);
         Ingest = new ReadIngestionService(Db, Ctx, resolver, Rules, new NullLivePublisher(), new PresenceService(Db, Ctx, Rules, new NullLivePublisher()));

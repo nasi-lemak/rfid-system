@@ -1,3 +1,4 @@
+using Rfid.Protocols;
 using Microsoft.EntityFrameworkCore;
 using Rfid.Application.Contracts;
 using Rfid.Domain;
@@ -38,7 +39,7 @@ public class ReadIngestionService
             if (seen != null)
             {
                 var prior = seen.Response == null ? null : System.Text.Json.JsonSerializer.Deserialize<IngestResult>(seen.Response);
-                return prior == null ? new IngestResult { Received = batch.Reads.Count, Duplicate = true } : new IngestResult { Received = prior.Received, Resolved = prior.Resolved, Unknown = prior.Unknown, Events = prior.Events, Alerts = prior.Alerts, Duplicate = true };
+                return prior == null ? new IngestResult { Received = batch.Reads.Count, Duplicate = true } : new IngestResult { Received = prior.Received, Resolved = prior.Resolved, Unknown = prior.Unknown, Events = prior.Events, Alerts = prior.Alerts, Late = prior.Late, Duplicate = true };
             }
         }
         Device? device = deviceId.HasValue
@@ -76,6 +77,8 @@ public class ReadIngestionService
 
             if (item == null) { result.Unknown++; continue; }
             result.Resolved++;
+            // readAt is authoritative. A batch replayed late by an agent/handheld must not regress state that newer reads already set.
+            if (item.LastSeenAt.HasValue && at < item.LastSeenAt.Value) { result.Late++; continue; }
             if (antenna?.X != null && (r.Rssi.HasValue || r.RangeM.HasValue))
             {
                 if (!sightings.TryGetValue(item.Id, out var sg)) sightings[item.Id] = sg = (item, new(), at);

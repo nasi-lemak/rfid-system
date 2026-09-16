@@ -385,6 +385,15 @@ Move `tag_reads`, `position_fixes`, `gps_fixes`, `outbox` to native range partit
 when a tenant exceeds ~10⁸ rows; retention becomes `DROP PARTITION`. No code change beyond the
 migration.
 
+### Status (v2.1)
+
+Delivered: **7.1** edge agent (`Rfid.Edge` + shared `Rfid.Protocols`, late-read safety in
+ingestion), **7.5** integrations on the outbox with item-type/site filters, **7.3** schedule
+triggers with per-item de-duplication and the `RunOperation` action (executed post-commit via the
+outbox), **7.6** bizStep/disposition as operation-definition data with capture mapping. Also done
+from §8: outbox retention dataset. Remaining from §8: site filtering for presence/positions/
+analytics; line-table isolation; MQTT bridge on the edge (see `EDGE-AGENT.md`).
+
 ### Ordering recommendation
 
 1. **Foundation (next):** 7.1 edge agent, 7.5 integrations on the outbox, 7.3 `RunOperation`

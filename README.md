@@ -11,6 +11,7 @@ muster, livestock — built from one set of primitives plus **solution templates
 | Database | PostgreSQL 16 (JSONB for attributes, lifecycles, rules) | migrations in `src/backend/Rfid.Infrastructure/Persistence/Migrations` |
 | Web | React 19, TypeScript, Vite, React Router, TanStack Query | `src/web` |
 | Handheld | React Native (Expo SDK 57), reader abstraction (Zebra / Chainway / BLE / simulated), offline queue | `src/mobile` |
+| Edge agent | .NET 8 worker: LLRP + vendor pushes → durable on-disk queue → store-and-forward | `src/backend/Rfid.Edge` (`Dockerfile.edge`, compose profile `edge`) |
 | Docs | Architecture, data model, vertical → primitive mapping, handheld SDK notes | `docs/` |
 
 ## How one platform covers ~90 systems
@@ -244,12 +245,28 @@ decisions and the re-assessed roadmap are in
   (`Out`), duplicate encode/decode endpoints removed, module folders instead of release-numbered
   files, hardened handheld queue (match by `clientId`, back-off, attempt cap, visible rejections).
 
+## v2.1 — foundation items from the re-assessed roadmap
+
+- **Reader edge agent** (`Rfid.Edge`, [`docs/EDGE-AGENT.md`](docs/EDGE-AGENT.md)) — drives LLRP readers
+  and receives Impinj/Zebra/generic pushes on site, stores batches on disk and forwards them in order
+  with monotonic batch ids; the server acknowledges replays and never lets a late batch move state
+  backwards. Protocol code moved to a shared `Rfid.Protocols` library used by both hosts; a `Gateway`
+  device kind and an `edgeManaged` reader flag complete the picture.
+- **Integrations on the outbox** — ERP/BI batches are outbox messages (one in flight per endpoint,
+  cursor advances only on success, dead-letters are rebuilt from the cursor); new per-endpoint
+  filters by item type and site.
+- **Schedule rules and `RunOperation`** — rules can sweep items on an interval (`hoursSinceSeen`,
+  `daysUntilInspection`, `cyclesRemaining`, …) with per-item de-duplication, and any rule can run an
+  operation definition (auto-Dispose at max cycles, Maintain after a failed inspection), executed
+  after commit through the outbox.
+- **EPCIS vocabulary as definition data** — built-in and template operations declare their CBV
+  bizStep/disposition; capture maps steps back to definitions.
+
 ## Roadmap
 
 Re-assessed from first principles in [`docs/ARCHITECTURE-REVIEW.md`](docs/ARCHITECTURE-REVIEW.md) §7.
-Foundation next: reader **edge agent** with store-and-forward (built on `batchId`), integrations on
-the outbox, scheduled rule triggers and a `RunOperation` action, EPCIS bizStep as definition data.
-Near-term: guided **workflows** as ordered operation definitions, device configuration management,
+Foundation items shipped in v2.1 (edge agent, integrations on the outbox, schedule rules +
+`RunOperation`, EPCIS bizStep as data). Near-term: guided **workflows** as ordered operation definitions, device configuration management,
 analytics consolidation. Long-term modules: WMS stock balances as an event projection, vendor
 RTLS position ingest (UWB TDoA / BLE AoA engines), 3D digital-twin views, signed template
 marketplace, native partitioning of high-volume tables.

@@ -1,8 +1,9 @@
+using Rfid.Protocols;
 using System.Net;
 using System.Net.Sockets;
 using Microsoft.EntityFrameworkCore;
 using Rfid.Application.Contracts;
-using Rfid.Application.Llrp;
+using Rfid.Protocols.Llrp;
 using Rfid.Application.Positioning;
 using Rfid.Application.Services;
 using Rfid.Domain;

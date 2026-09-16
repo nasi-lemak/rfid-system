@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Rfid.Domain\Rfid.Domain.csproj" />
+    <ProjectReference Include="..\Rfid.Protocols\Rfid.Protocols.csproj" />
   </ItemGroup>
 
   <ItemGroup>

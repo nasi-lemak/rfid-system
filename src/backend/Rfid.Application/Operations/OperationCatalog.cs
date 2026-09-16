@@ -11,13 +11,33 @@ public static class OperationCatalog
 {
     private static OperationEffect E(string kind, params (string k, object? v)[] p) => new(kind, p.ToDictionary(x => x.k, x => x.v));
     private static OperationDefinition D(OperationType type, string name, string description, ItemEventType ev, OperationRequirements req, params OperationEffect[] effects)
-        => new() { Code = type.ToString(), Name = name, Description = description, BaseType = type, EventType = ev, Requires = req, Effects = effects.ToList(), IsBuiltIn = true, Enabled = true };
+        => new() { Code = type.ToString(), Name = name, Description = description, BaseType = type, EventType = ev, Requires = req, Effects = effects.ToList(), IsBuiltIn = true, Enabled = true, EventData = Cbv(type) };
+
+    /// <summary>GS1 CBV business step / disposition each built-in writes into its events (EPCIS projection reads them; templates may override per definition).</summary>
+    private static Dictionary<string, object?> Cbv(OperationType t) => t switch
+    {
+        OperationType.Receive => new() { ["bizStep"] = "receiving", ["disposition"] = "in_progress" },
+        OperationType.Transfer => new() { ["bizStep"] = "storing", ["disposition"] = "in_progress" },
+        OperationType.Dispatch => new() { ["bizStep"] = "shipping", ["disposition"] = "in_transit" },
+        OperationType.Issue => new() { ["bizStep"] = "shipping", ["disposition"] = "in_transit" },
+        OperationType.Return => new() { ["bizStep"] = "receiving", ["disposition"] = "returned" },
+        OperationType.Count => new() { ["bizStep"] = "cycle_counting", ["disposition"] = "in_progress" },
+        OperationType.Inspect => new() { ["bizStep"] = "inspecting" },
+        OperationType.Maintain => new() { ["bizStep"] = "repairing", ["disposition"] = "active" },
+        OperationType.Dispose => new() { ["bizStep"] = "destroying", ["disposition"] = "destroyed" },
+        OperationType.Pack => new() { ["bizStep"] = "packing", ["disposition"] = "in_progress" },
+        OperationType.Unpack => new() { ["bizStep"] = "unpacking", ["disposition"] = "in_progress" },
+        OperationType.ProcessStage => new() { ["bizStep"] = "transforming", ["disposition"] = "active" },
+        OperationType.Commission => new() { ["bizStep"] = "commissioning", ["disposition"] = "active" },
+        OperationType.Adjust => new() { ["bizStep"] = "stock_taking", ["disposition"] = "in_progress" },
+        _ => new(),
+    };
 
     public static readonly IReadOnlyList<OperationDefinition> BuiltIn = new List<OperationDefinition>
     {
         D(OperationType.Receive, "Receive", "Goods/assets arrive: item becomes Active at the destination", ItemEventType.Moved, new() { ToLocation = true }, E(Activate), E(Move)),
         D(OperationType.Transfer, "Transfer", "Move to a destination; optionally hand custody to a party", ItemEventType.Moved, new() { ToLocation = true }, E(Move), E(SetCustodian, ("optional", true))),
-        new() { Code = "Dispatch", Name = "Dispatch", Description = "Ship out to a destination/party with an optional due-back date", BaseType = OperationType.Dispatch, EventType = ItemEventType.Moved, Requires = new() { ToLocation = true }, Effects = { E(Move), E(SetCustodian, ("optional", true)), E(SetDueBack) }, EventData = { ["dispatch"] = true }, IsBuiltIn = true },
+        new() { Code = "Dispatch", Name = "Dispatch", Description = "Ship out to a destination/party with an optional due-back date", BaseType = OperationType.Dispatch, EventType = ItemEventType.Moved, Requires = new() { ToLocation = true }, Effects = { E(Move), E(SetCustodian, ("optional", true)), E(SetDueBack) }, EventData = { ["dispatch"] = true, ["bizStep"] = "shipping", ["disposition"] = "in_transit" }, IsBuiltIn = true },
         D(OperationType.Issue, "Issue", "Hand custody to a party (tool crib, linen issue, loans)", ItemEventType.CustodyChanged, new() { Party = true }, E(SetCustodian), E(SetDueBack), E(Move, ("optional", true))),
         D(OperationType.Return, "Return", "Custody comes back; optionally place the item", ItemEventType.CustodyChanged, new(), E(ClearCustodian), E(ClearDueBack), E(Move, ("optional", true))),
         D(OperationType.Count, "Count", "Confirm presence (clears Missing); records counted quantity for quantity items", ItemEventType.Counted, new(), E(RecordSeen)),

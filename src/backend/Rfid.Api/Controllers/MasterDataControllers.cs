@@ -293,7 +293,8 @@ public class LookupsController : ControllerBase
         operationTypes = Enum.GetNames<OperationType>(), locationKinds = Enum.GetNames<LocationKind>(), partyKinds = Enum.GetNames<PartyKind>(),
         deviceKinds = Enum.GetNames<DeviceKind>(), tagTechnologies = Enum.GetNames<TagTechnology>(), eventTypes = Enum.GetNames<ItemEventType>(),
         ruleActions = Enum.GetNames<RuleAction>(), severities = Enum.GetNames<Severity>(), itemStatuses = Enum.GetNames<ItemStatus>(),
-        ruleFields = new[] { "item.state", "item.status", "item.cycleCount", "item.cyclesRemaining", "item.quantity", "item.reorderPoint", "item.daysUntilExpiry", "item.daysUntilInspection", "item.hasCustodian", "item.overdue", "item.lotNumber", "item.attributes.<name>", "itemType.code", "itemType.category", "toLocation.kind", "toLocation.code", "toLocation.name", "toLocation.<attribute>", "fromLocation.kind", "party.kind", "event.type", "data.direction", "data.result" },
+        ruleFields = new[] { "item.state", "item.status", "item.cycleCount", "item.cyclesRemaining", "item.quantity", "item.reorderPoint", "item.daysUntilExpiry", "item.daysUntilInspection", "item.daysSinceInspection", "item.hoursSinceSeen", "item.daysSinceSeen", "item.ageDays", "item.hasCustodian", "item.overdue", "item.daysOverdue", "item.lotNumber", "item.attributes.<name>", "itemType.code", "itemType.category", "toLocation.kind", "toLocation.code", "toLocation.name", "toLocation.<attribute>", "fromLocation.kind", "party.kind", "event.type", "data.direction", "data.result" },
+        ruleKinds = Enum.GetNames<RuleKind>(),
         ruleOps = new[] { "eq", "ne", "gt", "gte", "lt", "lte", "in", "nin", "contains", "exists", "notexists" },
     });
 }

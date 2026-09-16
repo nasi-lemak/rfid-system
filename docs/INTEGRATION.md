@@ -53,14 +53,26 @@ exit too.
 - `GET /api/presence/items/{itemId}` — an item's session history (dwell analytics)
 - `GET /api/reports/dwell` — dwell report
 
+### Edge agent (store-and-forward)
+
+For sites that must keep reading through WAN outages, run the **edge agent** (`Rfid.Edge`,
+`docker compose --profile edge up`): it drives LLRP readers and/or receives Impinj/Zebra/generic
+pushes locally, queues batches on disk and forwards them in order with `batchId = {agent}:{seq}`;
+the server acknowledges replays (`duplicate: true`) and never lets a late batch move state backwards
+(`late` count). Mark readers it drives as `edgeManaged` on the device so the server does not open a
+second LLRP connection. Full guide: [`EDGE-AGENT.md`](EDGE-AGENT.md).
+
 ## Delivery guarantees (outbox)
 
 Every external side effect — SignalR `event`/`alert` pushes, rule webhooks and notification
 channel deliveries — is written to the `outbox` table in the same database commit as the state
 change that caused it and delivered afterwards by a single dispatcher with exponential back-off
 (8 attempts, then dead-lettered with the error kept). Consumers therefore never see state that
-was rolled back, and a slow or failing endpoint never blocks an operation. Cursor-based
-integration endpoints (below) are at-least-once by design; de-duplicate on `eventId`.
+was rolled back, and a slow or failing endpoint never blocks an operation. Integration
+endpoints (below) also deliver through the outbox: their cursor is the source of truth and only
+advances when a batch was accepted, one batch is in flight per endpoint (ordering), and a batch that
+exhausts its retries is dead-lettered for inspection while the next pass rebuilds the same data from
+the cursor. Delivery is therefore at-least-once; de-duplicate on `eventId`.
 
 ## Operation definitions
 
@@ -95,6 +107,27 @@ undelivered data. `POST /api/integrations/{id}/deliver` forces an immediate atte
 cursor can be rewound to replay history.
 
 Rules can also call a webhook directly (action `Webhook`) for single, immediate notifications.
+
+Per-endpoint filters: `eventTypes` (none = all), `itemTypeCodes` (none = all), `siteLocationId`
+(events at or about items in that site subtree), `includeAlerts`. `GET /api/integrations` shows the
+cursor, the in-flight outbox message, failure count and last error; `POST /api/integrations/{id}/deliver`
+builds the next batch and pushes the outbox immediately.
+
+## Rules: schedules and operations
+
+Rules have a `kind`. **Event** rules react to one item event (trigger = event type). **Schedule**
+rules (`intervalMinutes`) sweep every live item on that interval and evaluate the same conditions,
+with time-derived fields: `item.hoursSinceSeen`, `item.daysSinceSeen`, `item.daysUntilExpiry`,
+`item.daysUntilInspection`, `item.daysSinceInspection`, `item.cyclesRemaining`, `item.daysOverdue`,
+`item.ageDays`. Alert actions fire once per (rule, item) while the alert is open.
+
+Action `RunOperation` runs any operation definition for the matching item — `params:
+{operation: "Dispose" | "Maintain" | "Sterilise" …, toLocationId?, partyId?, targetState?, reference?}`
+(templates in `reference`/`targetState` may use `{item.identifier}` etc.). The operation is queued in
+the outbox and executed after the triggering change is committed, once per message
+(`operations.ClientId = rule:…`); a business rejection is recorded on the operation, not retried.
+Examples: *cyclesRemaining ≤ 0 → Dispose*; *Inspected with data.result contains Fail → Maintain to
+the workshop*; *hoursSinceSeen > 48 → alert*.
 
 ### Vendor formats & authentication
 
@@ -360,6 +393,14 @@ open alerts 10, age 5. `Maintenance:AlertRisk` (70) raises one warning alert per
 `Maintenance:IntervalMinutes` (1440) snapshots forecasts for `GET /api/maintenance/predictions/{itemId}` trends.
 
 ## EPCIS 2.0
+
+Business steps and dispositions are **data on the operation definition**: every built-in carries
+its CBV vocabulary (`Receive` → `receiving`, `Dispatch` → `shipping`/`in_transit`, `Dispose` →
+`destroying`/`destroyed`, …) and template/tenant definitions may set their own (`Sterilise` →
+`sterilizing`/`sterile`). Operations stamp `bizStep`/`disposition` into their events' `data`; the
+EPCIS projection uses them and falls back to the event type's default for reader-produced events.
+Capture maps an inbound `bizStep` back to the definition that declares it (tenant definitions win
+over built-ins), else `Transfer`.
 
 `GET /api/epcis/v2` (discovery), `GET /api/epcis/v2/events` with `EQ_bizStep`, `EQ_disposition`,
 `EQ_action`, `MATCH_epc`, `GE_eventTime`, `LT_eventTime`, `eventType`, `EQ_readPoint`, `perPage`,

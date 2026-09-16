@@ -1,3 +1,4 @@
+using Rfid.Protocols;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 using MQTTnet;

@@ -24,6 +24,9 @@ public static class SolutionTemplateCatalog
     {
         Code = code, Name = name, Description = description, BaseType = baseType, EventType = ev, Requires = req ?? new(), Effects = effects.ToList(), ItemTypeCodes = itemTypes?.ToList() ?? new(), Enabled = true,
     };
+    /// <summary>Same, with EPCIS vocabulary the operation stamps on its events (CBV step, or a domain step such as "sterilizing").</summary>
+    private static OperationDefinition Op(string code, string name, string description, OperationType baseType, ItemEventType? ev, OperationRequirements? req, string[]? itemTypes, (string bizStep, string disposition) cbv, params OperationEffect[] effects)
+    { var d = Op(code, name, description, baseType, ev, req, itemTypes, effects); d.EventData["bizStep"] = cbv.bizStep; d.EventData["disposition"] = cbv.disposition; return d; }
     private static RuleCondition C(string field, string op, object? value) => new() { Field = field, Op = op, Value = value };
     private static Rule Alert(string name, ItemEventType trigger, Severity sev, string message, params RuleCondition[] conds) => new()
     {
@@ -112,7 +115,7 @@ public static class SolutionTemplateCatalog
                 },
                 OperationDefinitions =
                 {
-                    Op("Calibrate", "Calibrate", "Record a calibration: inspection result plus the 'calibrated' flag", OperationType.Inspect, ItemEventType.Inspected, null, new[] { "TOOL" },
+                    Op("Calibrate", "Calibrate", "Record a calibration: inspection result plus the 'calibrated' flag", OperationType.Inspect, ItemEventType.Inspected, null, new[] { "TOOL" }, ("inspecting", "conformant"),
                         Fx(OperationEffectKinds.RecordInspection), Fx(OperationEffectKinds.SetAttribute, ("key", "calibrated"), ("value", true)), Fx(OperationEffectKinds.SetAttribute, ("key", "calibratedAt"), ("value", "{now}"))),
                 },
                 Rules =
@@ -194,9 +197,9 @@ public static class SolutionTemplateCatalog
                 },
                 OperationDefinitions =
                 {
-                    Op("Decontaminate", "Decontaminate", "Washer/disinfector complete: Dirty → Decontaminated", OperationType.ProcessStage, ItemEventType.StateChanged, null, new[] { "TRAY", "INSTRUMENT" },
+                    Op("Decontaminate", "Decontaminate", "Washer/disinfector complete: Dirty → Decontaminated", OperationType.ProcessStage, ItemEventType.StateChanged, null, new[] { "TRAY", "INSTRUMENT" }, ("decontaminating", "in_progress"),
                         Fx(OperationEffectKinds.SetState), Fx(OperationEffectKinds.Move, ("optional", true))),
-                    Op("Sterilise", "Sterilise", "Autoclave cycle complete: Decontaminated → Sterilised, cycle count +1, sterile-store placement", OperationType.ProcessStage, ItemEventType.StateChanged, null, new[] { "TRAY", "INSTRUMENT" },
+                    Op("Sterilise", "Sterilise", "Autoclave cycle complete: Decontaminated → Sterilised, cycle count +1, sterile-store placement", OperationType.ProcessStage, ItemEventType.StateChanged, null, new[] { "TRAY", "INSTRUMENT" }, ("sterilizing", "sterile"),
                         Fx(OperationEffectKinds.SetState), Fx(OperationEffectKinds.Move, ("optional", true)), Fx(OperationEffectKinds.SetAttribute, ("key", "lastSterilisedAt"), ("value", "{now}"))),
                 },
                 Rules =

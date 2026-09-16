@@ -1,3 +1,4 @@
+using Rfid.Protocols;
 using Microsoft.EntityFrameworkCore;
 using Rfid.Application.Contracts;
 using Rfid.Application.Services;
@@ -217,22 +218,30 @@ public class ScheduleIntegrationTemplateTests
         await h.Ops.ProcessAsync(new OperationRequest { Type = OperationType.Transfer, ToLocationId = other.Id, Lines = { new() { Epc = tag.Epc } } });
         await h.Ops.ProcessAsync(new OperationRequest { Type = OperationType.Count, Lines = { new() { Epc = tag.Epc } } }); // filtered out (Counted)
         var transport = new FakeTransport();
-        var svc = new IntegrationService(h.Db, transport);
+        var svc = new IntegrationService(h.Db, h.Outbox);
+        var dispatcher = new Rfid.Application.Platform.OutboxDispatcher(h.Db, new Rfid.Application.Platform.IOutboxHandler[] { new IntegrationOutboxHandler(h.Db, transport) });
         var now = DateTime.UtcNow.AddSeconds(1);
-        Assert.Equal(1, await svc.DispatchAsync(ep, now));
+        // The batch is built after the cursor and handed to the outbox; nothing is sent until the dispatcher runs.
+        Assert.Equal(1, await svc.EnqueueAsync(ep, now));
+        Assert.Empty(transport.Calls); Assert.NotNull(ep.InFlightMessageId);
+        Assert.Equal(0, await svc.EnqueueAsync(ep, now.AddSeconds(1)));         // one batch in flight per endpoint keeps ordering
+        Assert.Equal(1, (await dispatcher.DispatchAsync(now)).Delivered);
         var call = transport.Calls.Single();
         Assert.Equal(IntegrationService.Sign("s3cret", call.body), call.headers["X-Rfid-Signature"]);
         Assert.Contains("\"type\":\"Moved\"", call.body); Assert.DoesNotContain("Counted", call.body); Assert.Contains("A-1", call.body);
-        Assert.Equal(1, ep.DeliveredCount); Assert.Null(ep.NextAttemptAt);
-        Assert.Equal(0, await svc.DispatchAsync(ep, now.AddSeconds(1))); // nothing new
+        Assert.Equal(1, ep.DeliveredCount); Assert.Null(ep.NextAttemptAt); Assert.Null(ep.InFlightMessageId);
+        Assert.Equal(0, await svc.EnqueueAsync(ep, now.AddSeconds(1))); // nothing new after the cursor
 
         await h.Ops.ProcessAsync(new OperationRequest { Type = OperationType.Transfer, ToLocationId = store.Id, Lines = { new() { Epc = tag.Epc } } });
         transport.Fail = true;
-        Assert.Equal(0, await svc.DispatchAsync(ep, DateTime.UtcNow.AddSeconds(2)));
-        Assert.Equal(1, ep.FailureCount); Assert.NotNull(ep.NextAttemptAt); Assert.Equal("HTTP 503", ep.LastError);
+        var t2 = DateTime.UtcNow.AddSeconds(2);
+        Assert.Equal(1, await svc.EnqueueAsync(ep, t2));
+        var failed = await dispatcher.DispatchAsync(t2);
+        Assert.Equal(1, failed.Failed); Assert.Equal(1, ep.FailureCount); Assert.NotNull(ep.NextAttemptAt); Assert.Equal("HTTP 503", ep.LastError);
+        var cursorBefore = ep.EventCursor;
         transport.Fail = false;
-        Assert.Equal(1, await svc.DispatchAsync(ep, DateTime.UtcNow.AddHours(2))); // retried, cursor moved
-        Assert.Equal(0, ep.FailureCount);
+        Assert.Equal(1, (await dispatcher.DispatchAsync(t2.AddHours(2))).Delivered);   // retried by the outbox, cursor moved
+        Assert.Equal(0, ep.FailureCount); Assert.True(ep.EventCursor > cursorBefore);
     }
 
     [Fact]
