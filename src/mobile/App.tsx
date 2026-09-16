@@ -15,6 +15,8 @@ import OperationScreen from './src/screens/OperationScreen';
 import CommissionScreen from './src/screens/CommissionScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import FloorPlanScreen from './src/screens/FloorPlanScreen';
+import GeofenceScreen from './src/screens/GeofenceScreen';
+import { LangContext, translate } from './src/i18n';
 import { C } from './src/ui';
 
 export type RootStackParamList = {
@@ -26,6 +28,7 @@ export type RootStackParamList = {
   Operation: { epcs?: string[]; type?: string } | undefined;
   Commission: { epc?: string } | undefined;
   FloorPlan: { locationId?: string; itemId?: string } | undefined;
+  Geofences: undefined;
   Settings: undefined;
 };
 
@@ -41,24 +44,27 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <SettingsContext.Provider value={ctx}>
+        <LangContext.Provider value={settings.language ?? 'en'}>
         <StatusBar style="light" />
         {!loaded ? null : !settings.token ? <LoginScreen /> : (
           <ReaderProvider>
             <NavigationContainer theme={theme}>
               <Stack.Navigator screenOptions={{ headerStyle: { backgroundColor: C.panel }, headerTintColor: C.text }}>
-                <Stack.Screen name="Home" component={HomeScreen} options={{ title: 'RFID Handheld' }} />
+                <Stack.Screen name="Home" component={HomeScreen} options={{ title: translate(settings.language ?? 'en', 'RFID Handheld') }} />
                 <Stack.Screen name="Inventory" component={InventoryScreen} options={{ title: 'Scan / Inventory' }} />
                 <Stack.Screen name="Lookup" component={LookupScreen} />
                 <Stack.Screen name="Locate" component={LocateScreen} />
                 <Stack.Screen name="Stocktake" component={StocktakeScreen} />
                 <Stack.Screen name="Operation" component={OperationScreen} options={{ title: 'Operation' }} />
                 <Stack.Screen name="Commission" component={CommissionScreen} options={{ title: 'Commission tags' }} />
-                <Stack.Screen name="FloorPlan" component={FloorPlanScreen} options={{ title: 'Floor plan' }} />
+                <Stack.Screen name="FloorPlan" component={FloorPlanScreen} options={{ title: translate(settings.language ?? 'en', 'Floor plan') }} />
+                <Stack.Screen name="Geofences" component={GeofenceScreen} options={{ title: translate(settings.language ?? 'en', 'Map & geofences') }} />
                 <Stack.Screen name="Settings" component={SettingsScreen} />
               </Stack.Navigator>
             </NavigationContainer>
           </ReaderProvider>
         )}
+        </LangContext.Provider>
       </SettingsContext.Provider>
     </SafeAreaProvider>
   );

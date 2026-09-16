@@ -70,3 +70,9 @@ public enum GeoFenceTrigger { Enter, Exit, Both }
 public enum NotificationKind { Email, Sms, Teams, Slack, Webhook }
 
 public enum NotificationStatus { Sent, Failed, Skipped }
+
+public enum AnomalyKind { ReadRateSpike, ReadRateDrop, OffHoursActivity, UnknownTagSurge, ItemFlapping, ExcessiveMovement }
+
+public enum AnomalyStatus { Open, Confirmed, Dismissed }
+
+public enum EpcScheme { Sgtin96, Sscc96, Grai96, Giai96 }

@@ -198,9 +198,21 @@ shared through Redis when configured.
 | `AnalyticsService` | Trend buckets, utilisation, dwell, inventory accuracy, alert response |
 | `MonitoringService`, `WarehouseExportJobService` | Lease-aware minute loop (health, dwell, escalation) and scheduled export |
 
+### v1.6 additions
+
+| Component | Role |
+|---|---|
+| `AnomalyService`, `Anomaly` | Baseline vs window statistics (z-scores) across six detectors; dedup, alerting, hour-of-day profile |
+| `Sscc96`, `EncodingService`, `SerialPool`, `EncodingBatch` | SSCC-96 codec; atomic serial allocation (concurrency token + retry); preview/commit modes tags · bind · items; `Tag.EncodingBatchId` |
+| `AuditMiddleware`, `AuditEntry` | Records mutating API calls after the action runs (route, entity id, status, redacted JSON body, IP, duration) |
+| `RetentionService`, `RetentionPolicy` | Per-dataset windows with defaults, previews and batched deletes; `RetentionJobService` every 6 h |
+| `AnomalyDetectionService` | Lease-aware detector loop (15 min) |
+| Web `i18n.tsx`, mobile `src/i18n` | String-keyed dictionaries with English fallback; language stored per browser/device |
+| Mobile `src/geo` | expo-location capture, fence geometry, GPS reporting per scanned EPC; `GeofenceScreen` |
+
 ## 7. Roadmap
-- Mobile geofencing and GPS capture in the handheld.
-- Anomaly detection on read patterns.
-- Tag encoding wizards for GS1 SSCC/GRAI/GIAI at scale.
-- Multi-language UI.
-- Audit log viewer and retention policies.
+- Barcode/2D fallback scanning and hybrid RFID+barcode flows.
+- Returnable-asset deposit and billing (cycle-based invoicing).
+- Supplier/customer portals with scoped read-only access.
+- Predictive maintenance from inspection and usage history.
+- EPCIS 2.0 event capture/query interface.

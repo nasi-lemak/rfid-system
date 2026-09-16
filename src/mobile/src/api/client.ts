@@ -53,6 +53,7 @@ export interface OperationLineResult { epc?: string; itemId?: string; itemName?:
 export interface OperationResult { operationId: string; ok: number; unknown: number; rejected: number; lines: OperationLineResult[] }
 export interface FloorPlanSummary { id: string; name: string; kind: string; bounds?: { w: number; h: number } | null }
 export interface FloorPlan { locationId: string; location: string; widthM?: number | null; heightM?: number | null; anchors: { antennaId: string; device: string; port: number; x: number; y: number }[]; items: { itemId: string; name: string; identifier: string; itemType?: string | null; x: number; y: number; accuracyM?: number | null; at?: string | null; person?: string | null }[] }
+export interface FenceRow { id: string; name: string; kind: 'Circle' | 'Polygon'; centerLat?: number | null; centerLng?: number | null; radiusM?: number | null; points: { lat: number; lng: number }[]; severity: string; trigger: string; enabled: boolean; color?: string | null; location?: string | null; inside: number }
 export interface StocktakeSummary { id: string; name: string; status: string; expected: number; found: number; missing: number; unexpected: number; unknown: number }
 
 export const Api = {
@@ -66,9 +67,12 @@ export const Api = {
   parties: () => cachedGet<PartyRow[]>('/api/parties').then((r) => r.data),
   itemTypes: () => cachedGet<ItemTypeRow[]>('/api/item-types').then((r) => r.data),
   floorPlans: () => cachedGet<FloorPlanSummary[]>('/api/positions/floor-plans'),
+  gps: (batch: { deviceId?: string; fixes: { epc?: string; itemId?: string; lat: number; lng: number; accuracyM?: number; speedKph?: number; at?: string }[] }) => post<{ received: number; resolved: number; unknown: number; fixes: number; transitions: number; alerts: number }>('/api/ingest/gps', batch),
+  allocateSerials: (poolId: string, count = 1) => post<{ epcs: string[]; firstSerial: number; lastSerial: number }>(`/api/encoding/pools/${poolId}/allocate`, { count }),
+  pools: () => cachedGet<{ id: string; name: string; scheme: string; companyPrefix: string; reference: string; nextSerial: number; itemTypeId?: string | null }[]>('/api/encoding/pools').then((r) => r.data),
   floorPlan: (locationId: string) => cachedGet<FloorPlan>(`/api/positions/floor-plans/${locationId}`),
   /** Pulls everything the handheld needs offline (master data + floor plans) into the local cache. */
-  prefetchOffline: async () => { const [l, p, t, f] = await Promise.all([cachedGet<LocationRow[]>('/api/locations'), cachedGet<PartyRow[]>('/api/parties'), cachedGet<ItemTypeRow[]>('/api/item-types'), cachedGet<FloorPlanSummary[]>('/api/positions/floor-plans')]); await Promise.all(f.data.map((fp) => cachedGet<FloorPlan>(`/api/positions/floor-plans/${fp.id}`))); return { locations: l.data.length, parties: p.data.length, itemTypes: t.data.length, floorPlans: f.data.length }; },
+  prefetchOffline: async () => { const [l, p, t, f] = await Promise.all([cachedGet<LocationRow[]>('/api/locations'), cachedGet<PartyRow[]>('/api/parties'), cachedGet<ItemTypeRow[]>('/api/item-types'), cachedGet<FloorPlanSummary[]>('/api/positions/floor-plans'), cachedGet<FenceRow[]>('/api/geo/fences')]); await Promise.all(f.data.map((fp) => cachedGet<FloorPlan>(`/api/positions/floor-plans/${fp.id}`))); return { locations: l.data.length, parties: p.data.length, itemTypes: t.data.length, floorPlans: f.data.length }; },
   operation: (req: unknown) => post<OperationResult>('/api/operations', req),
   operationBatch: (reqs: unknown[]) => post<{ clientId?: string; ok: boolean; error?: string; result?: OperationResult }[]>('/api/operations/batch', reqs),
   ingestHandheld: (reads: { epc: string; rssi?: number; locationId?: string; readAt?: string }[], sessionId?: string) => post<{ received: number; resolved: number; unknown: number; alerts: number }>('/api/ingest/handheld', { reads, sessionId }),

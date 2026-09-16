@@ -67,19 +67,11 @@ public abstract class TenantLoopService : BackgroundService
 
 public class PresenceSweeperService : TenantLoopService
 {
-    private readonly TimeSpan _retention; private DateTime _lastPrune;
-    public PresenceSweeperService(IServiceScopeFactory s, ILogger<PresenceSweeperService> l, IConfiguration cfg) : base(s, l, TimeSpan.FromSeconds(cfg.GetValue("Presence:SweepSeconds", 30)))
-        => _retention = TimeSpan.FromDays(cfg.GetValue("Positions:RetentionDays", 30));
+    public PresenceSweeperService(IServiceScopeFactory s, ILogger<PresenceSweeperService> l, IConfiguration cfg) : base(s, l, TimeSpan.FromSeconds(cfg.GetValue("Presence:SweepSeconds", 30))) { }
     protected override async Task RunForTenantAsync(IServiceProvider sp, Guid tenantId, CancellationToken ct)
     {
         var closed = await sp.GetRequiredService<PresenceService>().SweepAsync(DateTime.UtcNow, ct);
         if (closed > 0) Log.LogInformation("Presence sweep closed {Count} sessions for tenant {Tenant}", closed, tenantId);
-        if (DateTime.UtcNow - _lastPrune > TimeSpan.FromHours(1))
-        {
-            _lastPrune = DateTime.UtcNow;
-            var pruned = await sp.GetRequiredService<PositionService>().PruneAsync(_retention, ct);
-            if (pruned > 0) Log.LogInformation("Pruned {Count} position fixes older than {Days}d for tenant {Tenant}", pruned, _retention.TotalDays, tenantId);
-        }
     }
 }
 
@@ -140,6 +132,29 @@ public class WarehouseExportJobService : TenantLoopService
         var runs = await sp.GetRequiredService<WarehouseExportService>().RunIncrementalAsync(DateTime.UtcNow, null, ct);
         foreach (var r in runs) if (r.Error != null) Log.LogWarning("Warehouse export {Dataset} failed: {Error}", r.Dataset, r.Error);
         if (runs.Count > 0) Log.LogInformation("Warehouse export: {Runs} dataset(s), {Rows} rows for tenant {Tenant}", runs.Count, runs.Sum(r => r.Rows), tenantId);
+    }
+}
+
+/// <summary>Anomaly detection pass (default every 15 minutes, on the lease holder).</summary>
+public class AnomalyDetectionService : TenantLoopService
+{
+    public AnomalyDetectionService(IServiceScopeFactory s, ILogger<AnomalyDetectionService> l, IConfiguration cfg) : base(s, l, TimeSpan.FromMinutes(Math.Max(1, cfg.GetValue("Anomaly:IntervalMinutes", 15)))) { }
+    protected override async Task RunForTenantAsync(IServiceProvider sp, Guid tenantId, CancellationToken ct)
+    {
+        var (created, updated) = await sp.GetRequiredService<AnomalyService>().RunAsync(DateTime.UtcNow, ct);
+        if (created > 0) Log.LogInformation("Anomaly detection: {Created} new, {Updated} refreshed for tenant {Tenant}", created, updated, tenantId);
+    }
+}
+
+/// <summary>Retention policies (default every 6 hours, on the lease holder).</summary>
+public class RetentionJobService : TenantLoopService
+{
+    public RetentionJobService(IServiceScopeFactory s, ILogger<RetentionJobService> l, IConfiguration cfg) : base(s, l, TimeSpan.FromMinutes(Math.Max(5, cfg.GetValue("Retention:IntervalMinutes", 360)))) { }
+    protected override async Task RunForTenantAsync(IServiceProvider sp, Guid tenantId, CancellationToken ct)
+    {
+        var deleted = await sp.GetRequiredService<RetentionService>().ApplyAsync(DateTime.UtcNow, ct);
+        var total = deleted.Values.Sum();
+        if (total > 0) Log.LogInformation("Retention: deleted {Total} rows ({Detail}) for tenant {Tenant}", total, string.Join(", ", deleted.Where(kv => kv.Value > 0).Select(kv => $"{kv.Key}={kv.Value}")), tenantId);
     }
 }
 

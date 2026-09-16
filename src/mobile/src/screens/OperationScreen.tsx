@@ -5,6 +5,8 @@ import type { RootStackParamList } from '../../App';
 import { Api, type LocationRow, type OperationResult, type PartyRow } from '../api/client';
 import { useInventory, useReader } from '../reader';
 import { runOrQueue } from '../store/queue';
+import { useSettings } from '../store/settings';
+import { currentPosition, reportGps } from '../geo';
 import { Badge, Button, C, Chips, Field, s } from '../ui';
 
 const TYPES = ['Receive', 'Transfer', 'Issue', 'Return', 'Count', 'Dispatch', 'Inspect', 'Maintain', 'ProcessStage', 'Pack', 'Unpack', 'Adjust', 'Dispose'] as const;
@@ -18,6 +20,7 @@ const showState: OpType[] = ['ProcessStage', 'Inspect', 'Maintain'];
 export default function OperationScreen() {
   const route = useRoute<RouteProp<RootStackParamList, 'Operation'>>();
   const { reader } = useReader();
+  const { settings } = useSettings();
   const [type, setType] = useState<OpType>((route.params?.type as OpType) ?? 'Transfer');
   const [scanning, setScanning] = useState(false);
   const { tags, clear } = useInventory(scanning);
@@ -46,7 +49,7 @@ export default function OperationScreen() {
     try {
       const req: Record<string, unknown> = { type, toLocationId: to?.id, partyId: party?.id, containerItemId: container?.id, targetState: targetState || undefined, reference: reference || undefined, lines: epcs.map((epc) => ({ epc, quantity: qty ? Number(qty) : undefined })) };
       const r = await runOrQueue(req);
-      if (r.online) { setResult(r.result); if (r.result.rejected === 0 && r.result.unknown === 0) { setMsg(`✓ ${type}: ${r.result.ok} item(s)`); clear(); setExtra([]); } }
+      if (r.online) { setResult(r.result); if (settings.gpsEnabled) reportGps(epcs, await currentPosition()); if (r.result.rejected === 0 && r.result.unknown === 0) { setMsg(`✓ ${type}: ${r.result.ok} item(s)`); clear(); setExtra([]); } }
       else setMsg(`Offline – queued (${r.queued} pending). It will sync automatically.`);
     } catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
   };

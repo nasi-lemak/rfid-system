@@ -7,9 +7,11 @@ import { SimulatedReader } from '../reader/SimulatedReader';
 import { clearQueue, readQueue, sync } from '../store/queue';
 import { useSettings } from '../store/settings';
 import { Badge, Button, C, Chips, Field, s } from '../ui';
+import { LANGS, useT } from '../i18n';
 
 export default function SettingsScreen() {
   const { settings, update } = useSettings();
+  const t = useT();
   const { reader, status, error, reconnect } = useReader();
   const [locations, setLocations] = useState<LocationRow[]>([]);
   const [printers, setPrinters] = useState<{ id: string; name: string }[]>([]);
@@ -59,9 +61,18 @@ export default function SettingsScreen() {
         <View style={[s.row, { marginTop: 8 }]}><Button small tone="primary" title="Download for offline" onPress={() => Api.prefetchOffline().then((r) => setMsg(`Cached ${r.locations} locations, ${r.parties} parties, ${r.itemTypes} item types, ${r.floorPlans} floor plans`)).catch((e) => setMsg((e as Error).message))} /><Button small title="Clear cache" onPress={() => clearCache().then((n) => setMsg(`Cleared ${n} cached entries`))} /></View>
       </View>
       <View style={s.panel}>
+        <Text style={s.h2}>{t('Language')}</Text>
+        <Chips options={LANGS.map((l) => ({ value: l.code, label: l.label }))} value={settings.language ?? 'en'} onChange={(v) => update({ language: v })} />
+      </View>
+      <View style={s.panel}>
+        <Text style={s.h2}>{t('GPS')}</Text>
+        <Text style={s.muted}>{t('Attach GPS position to scans and operations')}</Text>
+        <View style={[s.row, { marginTop: 8 }]}><Badge tone={settings.gpsEnabled ? 'ok' : 'default'}>{settings.gpsEnabled ? 'on' : 'off'}</Badge><Button small title={settings.gpsEnabled ? 'Disable' : 'Enable'} onPress={() => update({ gpsEnabled: !settings.gpsEnabled })} /></View>
+      </View>
+      <View style={s.panel}>
         <Text style={s.h2}>Account</Text>
         <Text style={s.text}>{settings.userName} @ {settings.serverUrl}</Text>
-        <Button title="Sign out" tone="danger" onPress={() => update({ token: null, userName: null })} style={{ marginTop: 10 }} />
+        <Button title={t('Sign out')} tone="danger" onPress={() => update({ token: null, userName: null })} style={{ marginTop: 10 }} />
       </View>
       {msg && <Text style={[s.muted, { marginBottom: 20 }]}>{msg}</Text>}
     </ScrollView>

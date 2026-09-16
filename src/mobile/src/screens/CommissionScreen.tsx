@@ -18,6 +18,7 @@ export default function CommissionScreen() {
   const { reader } = useReader();
   const { settings } = useSettings();
   const [types, setTypes] = useState<ItemTypeRow[]>([]);
+  const [pools, setPools] = useState<{ id: string; name: string; scheme: string; itemTypeId?: string | null }[]>([]);
   const [typeId, setTypeId] = useState<string | null>(null);
   const [epc, setEpc] = useState(route.params?.epc ?? '');
   const [newEpc, setNewEpc] = useState('');
@@ -28,7 +29,8 @@ export default function CommissionScreen() {
   const [busy, setBusy] = useState(false);
   const [reading, setReading] = useState(false);
   const [lastItemId, setLastItemId] = useState<string | null>(null);
-  useEffect(() => { Api.itemTypes().then(setTypes).catch((e) => setMsg((e as Error).message)); }, []);
+  useEffect(() => { Api.itemTypes().then(setTypes).catch((e) => setMsg((e as Error).message)); Api.pools().then(setPools).catch(() => {}); }, []);
+  const allocate = async (poolId: string) => { setBusy(true); try { const r = await Api.allocateSerials(poolId, 1); setNewEpc(r.epcs[0]); setMsg(`Serial ${r.firstSerial} reserved from pool – write it to the tag`); } catch (e) { setMsg((e as Error).message); } finally { setBusy(false); } };
   const type = types.find((t) => t.id === typeId);
 
   useEffect(() => {
@@ -60,6 +62,7 @@ export default function CommissionScreen() {
         <Field label="EPC in hand" value={epc} onChangeText={(v) => setEpc(v.toUpperCase())} autoCapitalize="characters" />
         <Button small title={reading ? 'Reading…' : '📡 Read nearest tag'} onPress={() => setReading(true)} disabled={reading} style={{ marginTop: 8 }} />
         <Field label="Encode new EPC (optional, hex, 24 chars for 96-bit)" value={newEpc} onChangeText={(v) => setNewEpc(v.toUpperCase())} autoCapitalize="characters" placeholder="e.g. 3034F8B2000001000000ABCD" />
+        {pools.length > 0 && <View style={{ marginTop: 8 }}><Text style={s.muted}>Next EPC from a GS1 serial pool:</Text><Chips options={pools.filter((p) => !typeId || !p.itemTypeId || p.itemTypeId === typeId).map((p) => ({ value: p.id, label: `${p.name} (${p.scheme})` }))} value={null} onChange={allocate} /></View>}
         <Button small title="Write EPC to tag" onPress={encode} disabled={busy || !/^[0-9A-F]{8,64}$/.test(newEpc) || newEpc.length % 4 !== 0} style={{ marginTop: 8 }} />
       </View>
       <View style={s.panel}>

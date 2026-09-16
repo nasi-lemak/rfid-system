@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { del, get, post, put } from './client';
-import type { Alert, Dashboard, SeedResult, FloorPlanSummary, FloorPlan, HeatMap, PathHistory, HistoryItem, ClusterStatus, UserSites, DeviceHealthReport, FirmwareRelease, FirmwareRollout, MapData, GpsTrack, DashboardDef, WidgetResult, WidgetTypes, DashboardWidget, ChannelRow, EscalationPolicy, NotificationLogRow, TrendSeries, UtilizationRow, DwellRow, AccuracyReport, AlertResponseRow, DeviceHealthRow, WarehouseStatus, PrintJob, LlrpStatus, ZoneOccupancy, MusterReport, TimingRow, ReportDef, ReportResult, IntegrationEndpoint, StocktakeSchedule, Device, Item, ItemEvent, ItemType, Location, Lookups, OperationRequest, OperationResult, OperationSummary, Paged, Party, Rule, StocktakeDetail, StocktakeListRow, StocktakeSummary, Tag, Template } from './types';
+import type { Alert, Dashboard, SeedResult, FloorPlanSummary, FloorPlan, HeatMap, PathHistory, HistoryItem, ClusterStatus, UserSites, DeviceHealthReport, FirmwareRelease, FirmwareRollout, MapData, GpsTrack, DashboardDef, WidgetResult, WidgetTypes, DashboardWidget, ChannelRow, EscalationPolicy, NotificationLogRow, TrendSeries, UtilizationRow, DwellRow, AccuracyReport, AlertResponseRow, DeviceHealthRow, WarehouseStatus, Anomaly, HourProfile, SerialPool, SchemeInfo, EncodingBatch, AuditEntry, AuditSummary, RetentionRow, PrintJob, LlrpStatus, ZoneOccupancy, MusterReport, TimingRow, ReportDef, ReportResult, IntegrationEndpoint, StocktakeSchedule, Device, Item, ItemEvent, ItemType, Location, Lookups, OperationRequest, OperationResult, OperationSummary, Paged, Party, Rule, StocktakeDetail, StocktakeListRow, StocktakeSummary, Tag, Template } from './types';
 
 export const useLookups = () => useQuery({ queryKey: ['lookups'], queryFn: () => get<Lookups>('/api/lookups'), staleTime: Infinity });
 export const useDashboard = () => useQuery({ queryKey: ['dashboard'], queryFn: () => get<Dashboard>('/api/dashboard'), refetchInterval: 15000 });
@@ -101,3 +101,13 @@ export const useAccuracy = (days: number) => useQuery({ queryKey: ['accuracy', d
 export const useAlertResponse = (days: number) => useQuery({ queryKey: ['alert-response', days], queryFn: () => get<AlertResponseRow[]>('/api/analytics/alert-response', { days }) });
 export const useUptime = (days: number) => useQuery({ queryKey: ['uptime', days], queryFn: () => get<DeviceHealthRow[]>('/api/analytics/uptime', { days }) });
 export const useWarehouse = () => useQuery({ queryKey: ['warehouse'], queryFn: () => get<WarehouseStatus>('/api/warehouse'), refetchInterval: 20000 });
+
+// ── v1.6 ──
+export const useAnomalies = (status: string) => useQuery({ queryKey: ['anomalies', status], queryFn: () => get<Anomaly[]>('/api/anomalies', { status }), refetchInterval: 30000 });
+export const useReadProfile = (deviceId?: string, locationId?: string) => useQuery({ queryKey: ['read-profile', deviceId, locationId], queryFn: () => get<HourProfile[]>('/api/anomalies/profile', { deviceId, locationId }), enabled: !!(deviceId || locationId) });
+export const usePools = () => useQuery({ queryKey: ['pools'], queryFn: () => get<SerialPool[]>('/api/encoding/pools') });
+export const useSchemes = (companyPrefix: string) => useQuery({ queryKey: ['schemes', companyPrefix], queryFn: () => get<SchemeInfo[]>('/api/encoding/schemes', { companyPrefix }) });
+export const useBatches = () => useQuery({ queryKey: ['batches'], queryFn: () => get<EncodingBatch[]>('/api/encoding/batches') });
+export const useAudit = (params: Record<string, unknown>) => useQuery({ queryKey: ['audit', params], queryFn: () => get<Paged<AuditEntry>>('/api/audit', params) });
+export const useAuditSummary = () => useQuery({ queryKey: ['audit-summary'], queryFn: () => get<AuditSummary>('/api/audit/summary') });
+export const useRetention = () => useQuery({ queryKey: ['retention'], queryFn: () => get<RetentionRow[]>('/api/retention') });

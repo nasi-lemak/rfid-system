@@ -30,6 +30,9 @@ import Cluster from './pages/Cluster';
 import MapPage from './pages/Map';
 import Notifications from './pages/Notifications';
 import Analytics from './pages/Analytics';
+import Anomalies from './pages/Anomalies';
+import Encoding from './pages/Encoding';
+import Audit from './pages/Audit';
 
 export default function App() {
   const { user } = useAuth();
@@ -65,6 +68,9 @@ export default function App() {
         <Route path="map" element={<MapPage />} />
         <Route path="notifications" element={<Notifications />} />
         <Route path="analytics" element={<Analytics />} />
+        <Route path="anomalies" element={<Anomalies />} />
+        <Route path="encoding" element={<Encoding />} />
+        <Route path="audit" element={<Audit />} />
         <Route path="auth/callback" element={<Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

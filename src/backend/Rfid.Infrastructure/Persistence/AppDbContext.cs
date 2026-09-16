@@ -49,6 +49,11 @@ public class AppDbContext : DbContext, IAppDb
     public DbSet<EscalationPolicy> EscalationPolicies => Set<EscalationPolicy>();
     public DbSet<NotificationLog> NotificationLogs => Set<NotificationLog>();
     public DbSet<WarehouseExportRun> WarehouseExportRuns => Set<WarehouseExportRun>();
+    public DbSet<Anomaly> Anomalies => Set<Anomaly>();
+    public DbSet<SerialPool> SerialPools => Set<SerialPool>();
+    public DbSet<EncodingBatch> EncodingBatches => Set<EncodingBatch>();
+    public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
+    public DbSet<RetentionPolicy> RetentionPolicies => Set<RetentionPolicy>();
 
     private Guid CurrentTenant => _ctx?.TenantId ?? Guid.Empty;
 
@@ -298,6 +303,34 @@ public class AppDbContext : DbContext, IAppDb
         });
         b.Entity<NotificationLog>(e => { e.ToTable("notification_logs"); e.Property(l => l.Status).HasConversion<string>(); e.HasIndex(l => new { l.TenantId, l.SentAt }); e.HasIndex(l => l.AlertId); });
         b.Entity<WarehouseExportRun>(e => { e.ToTable("warehouse_export_runs"); e.HasIndex(r => new { r.TenantId, r.Dataset, r.To }); });
+
+        b.Entity<Anomaly>(e =>
+        {
+            e.ToTable("anomalies");
+            e.Property(a => a.Kind).HasConversion<string>(); e.Property(a => a.Status).HasConversion<string>();
+            e.HasIndex(a => new { a.TenantId, a.Status, a.DetectedAt });
+            e.Property(a => a.Details).HasColumnType(isNpgsql ? "jsonb" : "text").HasConversion(JsonConv<Dictionary<string, object?>>(json), JsonComparer<Dictionary<string, object?>>());
+        });
+        b.Entity<SerialPool>(e =>
+        {
+            e.ToTable("serial_pools");
+            e.Property(p => p.Scheme).HasConversion<string>();
+            e.Property(p => p.NextSerial).HasConversion<long>(); e.Property(p => p.MaxSerial).HasConversion<long?>();
+            e.Property(p => p.Version).IsConcurrencyToken();
+            e.HasIndex(p => new { p.TenantId, p.Name }).IsUnique();
+        });
+        b.Entity<EncodingBatch>(e =>
+        {
+            e.ToTable("encoding_batches");
+            e.Property(p => p.Scheme).HasConversion<string>();
+            e.Property(p => p.FirstSerial).HasConversion<long>(); e.Property(p => p.LastSerial).HasConversion<long>();
+        });
+        b.Entity<AuditEntry>(e =>
+        {
+            e.ToTable("audit_entries");
+            e.HasIndex(a => new { a.TenantId, a.At }); e.HasIndex(a => new { a.TenantId, a.UserId, a.At }); e.HasIndex(a => new { a.EntityType, a.EntityId });
+        });
+        b.Entity<RetentionPolicy>(e => { e.ToTable("retention_policies"); e.HasIndex(p => new { p.TenantId, p.Dataset }).IsUnique(); });
 
         b.Entity<SolutionTemplate>(e =>
         {

@@ -90,4 +90,5 @@ public class Tag : TenantEntity
     public Item? Item { get; set; }
     public TagStatus Status { get; set; } = TagStatus.Unassigned;
     public DateTime? EncodedAt { get; set; }
+    public Guid? EncodingBatchId { get; set; }
 }

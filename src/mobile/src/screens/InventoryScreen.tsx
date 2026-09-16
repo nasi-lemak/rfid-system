@@ -3,6 +3,7 @@ import { FlatList, Pressable, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
+import { currentPosition, reportGps } from '../geo';
 import { Api, type ItemSummary } from '../api/client';
 import { useInventory, useReader } from '../reader';
 import { useSettings } from '../store/settings';
@@ -34,7 +35,12 @@ export default function InventoryScreen() {
   const known = list.filter((t) => resolved[t.epc]).length;
   const post = async () => {
     const reads = list.map((t) => ({ epc: t.epc, rssi: t.rssi, locationId: settings.currentLocationId ?? undefined, readAt: new Date(t.lastAt).toISOString() }));
-    try { const r = await Api.ingestHandheld(reads, `inv-${Date.now()}`); setPosted(`Sent ${r.received} reads · ${r.resolved} resolved · ${r.alerts} alert(s)`); } catch (e) { setPosted((e as Error).message); }
+    try {
+      const r = await Api.ingestHandheld(reads, `inv-${Date.now()}`);
+      let gps = '';
+      if (settings.gpsEnabled) { const g = await reportGps(reads.map((x) => x.epc), await currentPosition()); if (g) gps = ` · GPS ${g.fixes} fix(es)${g.alerts ? `, ${g.alerts} geofence alert(s)` : ''}`; }
+      setPosted(`Sent ${r.received} reads · ${r.resolved} resolved · ${r.alerts} alert(s)${gps}`);
+    } catch (e) { setPosted((e as Error).message); }
   };
   return (
     <View style={s.screen}>

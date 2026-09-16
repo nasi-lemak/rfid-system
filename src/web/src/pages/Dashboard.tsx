@@ -4,12 +4,14 @@ import { del, post, put } from '../api/client';
 import { useDashboards, useInvalidate, useItemTypes, useLocations, useWidgetData, useWidgetTypes } from '../api/hooks';
 import type { DashboardDef, DashboardWidget, WidgetResult } from '../api/types';
 import { useAuth } from '../auth';
+import { useT } from '../i18n';
 import { Badge, Bars, ErrorBox, Modal, TrendChart, fmt, toneForSeverity } from '../components/ui';
 
 type Row = { label: string; count: number };
 const nid = () => Math.random().toString(36).slice(2, 10);
 
 function Widget({ w, r, editing, onRemove, onEdit, onMove, onResize }: { w: DashboardWidget; r?: WidgetResult; editing: boolean; onRemove: () => void; onEdit: () => void; onMove: (d: -1 | 1) => void; onResize: () => void }) {
+  const t = useT();
   const d = r?.data as never;
   const body = () => {
     if (r?.error) return <div className="error">{r.error}</div>;
@@ -31,7 +33,7 @@ function Widget({ w, r, editing, onRemove, onEdit, onMove, onResize }: { w: Dash
   };
   return (
     <div className="panel" style={{ gridColumn: `span ${Math.min(4, w.w)}`, minHeight: w.h > 1 ? 300 : undefined, position: 'relative' }}>
-      <div className="topbar" style={{ marginBottom: 6 }}><h3 style={{ margin: 0 }}>{w.title || w.type}</h3>{editing && <span className="row" style={{ gap: 2 }}><button className="sm" title="Move left" onClick={() => onMove(-1)}>◀</button><button className="sm" title="Move right" onClick={() => onMove(1)}>▶</button><button className="sm" title="Resize" onClick={onResize}>{w.w}×{w.h}</button><button className="sm" onClick={onEdit}>Edit</button><button className="sm danger" onClick={onRemove}>✕</button></span>}</div>
+      <div className="topbar" style={{ marginBottom: 6 }}><h3 style={{ margin: 0 }}>{t(w.title || w.type)}</h3>{editing && <span className="row" style={{ gap: 2 }}><button className="sm" title="Move left" onClick={() => onMove(-1)}>◀</button><button className="sm" title="Move right" onClick={() => onMove(1)}>▶</button><button className="sm" title="Resize" onClick={onResize}>{w.w}×{w.h}</button><button className="sm" onClick={onEdit}>Edit</button><button className="sm danger" onClick={onRemove}>✕</button></span>}</div>
       {body()}
     </div>
   );
@@ -66,7 +68,7 @@ function WidgetEditor({ w, onSave, onClose }: { w: DashboardWidget; onSave: (w: 
 }
 
 export default function Dashboard() {
-  const { user } = useAuth(); const isAdmin = user?.role === 'Admin';
+  const { user } = useAuth(); const isAdmin = user?.role === 'Admin'; const t = useT();
   const dashboards = useDashboards(); const inv = useInvalidate();
   const [selected, setSelected] = useState<string>(() => { try { return localStorage.getItem('rfid.dashboard') ?? ''; } catch { return ''; } });
   const current: DashboardDef | undefined = dashboards.data?.find((d) => d.id === selected) ?? dashboards.data?.[0];
@@ -101,12 +103,12 @@ export default function Dashboard() {
             {isAdmin && <label className="row small" style={{ gap: 4 }}><input type="checkbox" style={{ width: 'auto' }} checked={draft.shared} onChange={(e) => setDraft({ ...draft, shared: e.target.checked })} />Shared</label>}
             <label className="row small" style={{ gap: 4 }}><input type="checkbox" style={{ width: 'auto' }} checked={draft.isDefault} onChange={(e) => setDraft({ ...draft, isDefault: e.target.checked })} />Default</label>
             <button onClick={() => setEditW({ id: nid(), type: 'stat', title: '', w: 1, h: 1, config: { filter: 'items' } })}>+ Widget</button>
-            <button onClick={() => setDraft(null)}>Cancel</button><button className="primary" onClick={save}>Save</button>
+            <button onClick={() => setDraft(null)}>{t('Cancel')}</button><button className="primary" onClick={save}>{t('Save')}</button>
           </> : <>
-            <span className="muted small">Auto-refreshing</span>
-            {view.editable && user?.role !== 'Viewer' && <button onClick={() => setDraft({ ...view })}>Edit</button>}
+            <span className="muted small">{t('Auto-refreshing')}</span>
+            {view.editable && user?.role !== 'Viewer' && <button onClick={() => setDraft({ ...view })}>{t('Edit')}</button>}
             {user?.role !== 'Viewer' && <button onClick={copy}>Save as copy</button>}
-            {view.editable && !view.shared && <button className="danger" onClick={remove}>Delete</button>}
+            {view.editable && !view.shared && <button className="danger" onClick={remove}>{t('Delete')}</button>}
           </>}
         </div>
       </div>

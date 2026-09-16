@@ -262,7 +262,7 @@ public class VendorIngestController : ControllerBase
 }
 
 [ApiController, Route("api/tags"), Authorize]
-public class EncodingController : ControllerBase
+public class TagEncodeController : ControllerBase
 {
     public record EncodeRequest(string Scheme, string CompanyPrefix, string? Reference, ulong Serial, int Filter = 0);
 

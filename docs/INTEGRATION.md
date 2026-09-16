@@ -263,6 +263,43 @@ Files land at `{Path}/{tenant}/{dataset}/dt=YYYY-MM-DD/{dataset}-{from}-{to}-{ru
 on demand, `POST /api/warehouse/run` triggers the incremental pass, `GET /api/warehouse/download`
 streams a window to the caller. Analytics endpoints: `/api/analytics/trend|utilization|dwell|accuracy|alert-response|uptime`.
 
+## GS1 encoding at scale
+
+Serial pools (`/api/encoding/pools`) fix scheme, company prefix, reference and filter and hand out
+serials atomically: `POST /api/encoding/pools/{id}/allocate` `{ count }` → `{ epcs, firstSerial, lastSerial }`
+(used by the handheld's Commission screen and by external label printers). The wizard calls
+`POST /api/encoding/preview` then `POST /api/encoding/commit` with
+`{ scheme, companyPrefix, reference, filter, poolId? | firstSerial?, count, mode: tags|bind|items, itemTypeId?, itemIds?, identifierPrefix?, printerDeviceId? }`.
+Schemes: SGTIN-96 (reference = item reference), GRAI-96 (asset type), GIAI-96 (serial = asset
+reference), SSCC-96 (reference = extension digit). `GET /api/encoding/decode/{epc}` identifies and
+decodes any of them; `GET /api/encoding/schemes?companyPrefix=` returns digit rules for validation.
+
+## Anomaly detection
+
+`Anomaly:*` settings: `IntervalMinutes` (15), `BaselineDays` (14), `ZThreshold` (3), `AlertZ` (4),
+`MinReads` (20). Detectors: read-rate spike/drop per device versus the same hour of day in the
+baseline; off-hours activity per location (hours carrying < 2 % of baseline reads); unknown-tag
+surge per device; item flapping (≥ 6 moves between the same two locations in 24 h); excessive
+movement versus the item type's daily average. `GET /api/anomalies`, `POST /api/anomalies/run`,
+`POST /api/anomalies/{id}/confirm|dismiss` (dismiss closes the linked alert), `GET /api/anomalies/profile?deviceId|locationId`.
+
+## Audit log & retention
+
+Every POST/PUT/DELETE under `/api` (except ingest, auth and heartbeats) is recorded in
+`audit_entries` with `password`/`token`/`authToken`/`clientSecret`/`apiKey` masked and bodies
+truncated at 4 KB. `GET /api/audit?q&userId&action&entityType&entityId&from&to&page` and
+`GET /api/audit/summary`. Retention: `GET/PUT /api/retention`, `POST /api/retention/run`;
+`Retention:IntervalMinutes` (360). Defaults: tag_reads 90 d, position_fixes 30 d, gps_fixes 90 d,
+presence_sessions 180 d, device_heartbeats 30 d, notification_logs 90 d, audit_entries 365 d, closed
+alerts 365 d, anomalies 90 d, print_jobs 90 d, warehouse_runs 180 d, item_events never.
+
+## Handheld GPS
+
+Settings → **GPS** enables `expo-location`; after a free scan or an online operation the app posts
+`POST /api/ingest/gps` with one fix per EPC, so geofence rules apply to what the handheld saw. The
+**Map & geofences** screen draws the cached fences around the device on a metre grid (no tiles
+needed) and flags restricted (Critical) zones.
+
 ## Template customisation
 
 `GET /api/templates/export` returns the tenant's item types, lifecycles and rules as a template

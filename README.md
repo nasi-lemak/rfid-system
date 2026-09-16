@@ -172,8 +172,28 @@ See [`docs/INTEGRATION.md`](docs/INTEGRATION.md).
   day-partitioned landing zone, incrementally on a schedule or on demand; Analytics page with
   activity trends, utilisation, dwell, inventory accuracy, alert response and reader uptime.
 
+## v1.6
+
+- **Handheld GPS & geofencing** — the app can attach its GPS position to scans and operations
+  (posting fixes for the EPCs it saw), shows your position against the tenant's geofences on an
+  offline-capable local map, and warns inside restricted zones.
+- **Anomaly detection** — a 14-day baseline per reader/location/item flags read-rate spikes and drops
+  (same hour of day), off-hours activity, unknown-tag surges, items flapping between zones and
+  excessive movement; findings are scored in standard deviations, de-duplicated while open and
+  raise warning alerts when strong. Anomalies page with hour-of-day profiles.
+- **GS1 encoding at scale** — SSCC-96 joins SGTIN/GRAI/GIAI; serial pools hand out contiguous,
+  never-reused serials to the web wizard, handhelds and integrations; batches create unassigned
+  tags, bind items lacking tags or create items + tags, with duplicate checks and label queuing.
+- **Multi-language UI** — English, Bahasa Melayu, 中文, Español, Deutsch, Français in the web app
+  (navigation, sign-in, dashboard chrome; translations fall back to English per string) and the
+  handheld; language selector on the sign-in page and sidebar.
+- **Audit log & retention** — every mutating API call is recorded with user, route, entity, status
+  and a redacted body; Audit page with filters and detail. Per-dataset retention policies (reads,
+  fixes, sessions, heartbeats, logs, closed alerts…) run every 6 hours; item events stay forever
+  unless you choose otherwise.
+
 ## Roadmap
 
-Mobile geofencing and GPS capture in the handheld · anomaly detection on read patterns · tag
-encoding wizards for GS1 SSCC/GRAI/GIAI at scale · multi-language UI · audit log viewer and
-retention policies.
+Barcode/2D fallback scanning and hybrid RFID+barcode flows · returnable-asset deposit and billing
+(cycle-based invoicing) · supplier/customer portals with scoped read-only access · predictive
+maintenance from inspection and usage history · EPCIS 2.0 event capture/query interface.

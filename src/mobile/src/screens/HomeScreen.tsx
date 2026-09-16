@@ -7,6 +7,7 @@ import { useReader } from '../reader';
 import { useSettings } from '../store/settings';
 import { readQueue, sync } from '../store/queue';
 import { Badge, Button, C, s } from '../ui';
+import { useT } from '../i18n';
 
 const tiles: { to: keyof RootStackParamList; title: string; sub: string; icon: string }[] = [
   { to: 'Inventory', title: 'Scan / Inventory', sub: 'Read everything in range, see what it is', icon: '📡' },
@@ -16,10 +17,12 @@ const tiles: { to: keyof RootStackParamList; title: string; sub: string; icon: s
   { to: 'Operation', title: 'Operations', sub: 'Receive · Transfer · Issue · Return · Dispatch · Stage…', icon: '🔁' },
   { to: 'Commission', title: 'Commission', sub: 'Bind / encode tags to new items', icon: '🏷️' },
   { to: 'FloorPlan', title: 'Floor plan', sub: 'Anchors and live positions · works offline from the last sync', icon: '🗺️' },
+  { to: 'Geofences', title: 'Map & geofences', sub: 'Your position against geofences · restricted-zone warnings', icon: '📍' },
 ];
 
 export default function HomeScreen() {
   const nav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const tr = useT();
   const { status, error, reconnect } = useReader();
   const { settings } = useSettings();
   const [queued, setQueued] = useState(0);
@@ -40,10 +43,10 @@ export default function HomeScreen() {
       {tiles.map((t) => (
         <Pressable key={t.to} onPress={() => nav.navigate(t.to as never)} style={({ pressed }) => [s.panel, s.row, { opacity: pressed ? 0.7 : 1 }]}>
           <Text style={{ fontSize: 28 }}>{t.icon}</Text>
-          <View style={{ flex: 1 }}><Text style={[s.text, { fontWeight: '700' }]}>{t.title}</Text><Text style={s.muted}>{t.sub}</Text></View>
+          <View style={{ flex: 1 }}><Text style={[s.text, { fontWeight: '700' }]}>{tr(t.title)}</Text><Text style={s.muted}>{tr(t.sub)}</Text></View>
         </Pressable>
       ))}
-      <Button title="Settings" onPress={() => nav.navigate('Settings')} style={{ marginTop: 4 }} />
+      <Button title={tr('Settings')} onPress={() => nav.navigate('Settings')} style={{ marginTop: 4 }} />
     </ScrollView>
   );
 }

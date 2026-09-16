@@ -41,6 +41,11 @@ public interface IAppDb
     DbSet<EscalationPolicy> EscalationPolicies { get; }
     DbSet<NotificationLog> NotificationLogs { get; }
     DbSet<WarehouseExportRun> WarehouseExportRuns { get; }
+    DbSet<Anomaly> Anomalies { get; }
+    DbSet<SerialPool> SerialPools { get; }
+    DbSet<EncodingBatch> EncodingBatches { get; }
+    DbSet<AuditEntry> AuditEntries { get; }
+    DbSet<RetentionPolicy> RetentionPolicies { get; }
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }
 
