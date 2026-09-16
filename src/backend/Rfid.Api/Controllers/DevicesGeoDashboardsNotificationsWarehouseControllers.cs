@@ -20,9 +20,9 @@ public class DeviceHealthController : ControllerBase
 
     /// <summary>Health SLA overview: state, uptime over the window, firmware, last heartbeat.</summary>
     [HttpGet("health")]
-    public async Task<IActionResult> Health(int days = 7, CancellationToken ct = default)
+    public async Task<IActionResult> Health([FromServices] Rfid.Application.Security.ISiteAccess sites, [FromServices] AppDbContext db, int days = 7, CancellationToken ct = default)
     {
-        var rows = await _svc.UptimeAsync(TimeSpan.FromDays(Math.Clamp(days, 1, 90)), null, ct);
+        var rows = await _svc.UptimeAsync(TimeSpan.FromDays(Math.Clamp(days, 1, 90)), null, await Rfid.Application.Security.SiteScope.ForAsync(sites, db, ct), ct);
         return Ok(new { days, summary = rows.GroupBy(r => r.Health).ToDictionary(g => g.Key.ToString(), g => g.Count()), rows });
     }
 
@@ -242,7 +242,7 @@ public class DashboardsController : ControllerBase
 
     /// <summary>Evaluates a list of widget configs (saved or not) and returns their data.</summary>
     [HttpPost("evaluate")]
-    public async Task<IActionResult> Evaluate(List<DashboardWidget> widgets, CancellationToken ct) => Ok(await _svc.EvaluateAsync(widgets, ct));
+    public async Task<IActionResult> Evaluate(List<DashboardWidget> widgets, [FromServices] Rfid.Application.Security.ISiteAccess sites, CancellationToken ct) => Ok(await _svc.EvaluateAsync(widgets, await Rfid.Application.Security.SiteScope.ForAsync(sites, _db, ct), ct));
 }
 
 // ───────────────────────────── Notifications & escalation ─────────────────────────────
@@ -388,13 +388,14 @@ public class WarehouseController : ControllerBase
 [ApiController, Route("api/analytics"), Authorize]
 public class AnalyticsController : ControllerBase
 {
-    private readonly AnalyticsService _svc; private readonly DeviceHealthService _health;
-    public AnalyticsController(AnalyticsService svc, DeviceHealthService health) { _svc = svc; _health = health; }
+    private readonly AnalyticsService _svc; private readonly DeviceHealthService _health; private readonly Rfid.Application.Security.ISiteAccess _sites; private readonly AppDbContext _db;
+    public AnalyticsController(AnalyticsService svc, DeviceHealthService health, Rfid.Application.Security.ISiteAccess sites, AppDbContext db) { _svc = svc; _health = health; _sites = sites; _db = db; }
+    private Task<Rfid.Application.Security.SiteScope> Scope(CancellationToken ct) => Rfid.Application.Security.SiteScope.ForAsync(_sites, _db, ct);
 
-    [HttpGet("trend")] public async Task<IActionResult> Trend(string metric = "events", int days = 90, string bucket = "day", CancellationToken ct = default) => Ok(await _svc.TrendAsync(metric, Math.Clamp(days, 1, 730), bucket, null, ct));
-    [HttpGet("utilization")] public async Task<IActionResult> Utilization(int days = 90, CancellationToken ct = default) => Ok(await _svc.UtilizationAsync(Math.Clamp(days, 1, 730), null, ct));
-    [HttpGet("dwell")] public async Task<IActionResult> Dwell(int days = 90, CancellationToken ct = default) => Ok(await _svc.DwellAsync(Math.Clamp(days, 1, 730), null, ct));
-    [HttpGet("accuracy")] public async Task<IActionResult> Accuracy(int days = 365, CancellationToken ct = default) => Ok(await _svc.AccuracyAsync(Math.Clamp(days, 1, 730), null, ct));
-    [HttpGet("alert-response")] public async Task<IActionResult> AlertResponse(int days = 90, CancellationToken ct = default) => Ok(await _svc.AlertResponseAsync(Math.Clamp(days, 1, 730), null, ct));
-    [HttpGet("uptime")] public async Task<IActionResult> Uptime(int days = 30, CancellationToken ct = default) => Ok(await _health.UptimeAsync(TimeSpan.FromDays(Math.Clamp(days, 1, 365)), null, ct));
+    [HttpGet("trend")] public async Task<IActionResult> Trend(string metric = "events", int days = 90, string bucket = "day", CancellationToken ct = default) => Ok(await _svc.TrendAsync(metric, Math.Clamp(days, 1, 730), bucket, null, await Scope(ct), ct));
+    [HttpGet("utilization")] public async Task<IActionResult> Utilization(int days = 90, CancellationToken ct = default) => Ok(await _svc.UtilizationAsync(Math.Clamp(days, 1, 730), null, await Scope(ct), ct));
+    [HttpGet("dwell")] public async Task<IActionResult> Dwell(int days = 90, CancellationToken ct = default) => Ok(await _svc.DwellAsync(Math.Clamp(days, 1, 730), null, await Scope(ct), ct));
+    [HttpGet("accuracy")] public async Task<IActionResult> Accuracy(int days = 365, CancellationToken ct = default) => Ok(await _svc.AccuracyAsync(Math.Clamp(days, 1, 730), null, await Scope(ct), ct));
+    [HttpGet("alert-response")] public async Task<IActionResult> AlertResponse(int days = 90, CancellationToken ct = default) => Ok(await _svc.AlertResponseAsync(Math.Clamp(days, 1, 730), null, await Scope(ct), ct));
+    [HttpGet("uptime")] public async Task<IActionResult> Uptime(int days = 30, CancellationToken ct = default) => Ok(await _health.UptimeAsync(TimeSpan.FromDays(Math.Clamp(days, 1, 365)), null, await Scope(ct), ct));
 }

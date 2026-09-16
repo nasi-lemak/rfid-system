@@ -13,4 +13,5 @@ builder.Services.AddSingleton(sp => new ReadBuffer(sp.GetRequiredService<IOption
 builder.Services.AddSingleton<IServerClient>(sp => new HttpServerClient(new HttpClient(new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) }), sp.GetRequiredService<IOptions<EdgeOptions>>().Value.Server));
 builder.Services.AddSingleton(sp => new Forwarder(sp.GetRequiredService<EdgeQueue>(), sp.GetRequiredService<IServerClient>(), sp.GetRequiredService<ILogger<Forwarder>>(), sp.GetRequiredService<IOptions<EdgeOptions>>().Value.Queue.MaxBackoffSeconds));
 builder.Services.AddHostedService<EdgeAgent>();
+builder.Services.AddHostedService<MqttBridge>();
 await builder.Build().RunAsync();

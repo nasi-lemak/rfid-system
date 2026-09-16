@@ -168,11 +168,11 @@ public class EncodingLabelReportTests
         var (i, _) = h.Item(asset, "A-1", store); i.Cost = 500; i.PurchasedAt = DateOnly.FromDateTime(DateTime.UtcNow.AddMonths(-1)); i.DueBackAt = DateTime.UtcNow.AddDays(-2); i.CustodianPartyId = h.Party("Bob").Id;
         await h.SaveAsync();
         var svc = new ReportService(h.Db);
-        foreach (var r in ReportService.Catalog) { var (cols, rows) = await svc.RunAsync(r.Code, new Dictionary<string, string?>()); Assert.NotEmpty(cols); }
-        var (c, rs) = await svc.RunAsync("inventory", new Dictionary<string, string?>());
+        foreach (var r in ReportService.Catalog) { var (cols, rows) = await svc.RunAsync(r.Code, new Dictionary<string, string?>(), Rfid.Application.Security.SiteScope.All); Assert.NotEmpty(cols); }
+        var (c, rs) = await svc.RunAsync("inventory", new Dictionary<string, string?>(), Rfid.Application.Security.SiteScope.All);
         var csv = ReportService.ToCsv(c, rs);
         Assert.Contains("\"Store, main\"", csv);
-        var (_, overdue) = await svc.RunAsync("overdue", new Dictionary<string, string?>()); Assert.Single(overdue);
+        var (_, overdue) = await svc.RunAsync("overdue", new Dictionary<string, string?>(), Rfid.Application.Security.SiteScope.All); Assert.Single(overdue);
     }
 }
 

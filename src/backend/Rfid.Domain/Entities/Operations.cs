@@ -27,7 +27,8 @@ public class Operation : TenantEntity
     public List<OperationLine> Lines { get; set; } = new();
 }
 
-public class OperationLine : EntityBase
+/// <summary>Carries TenantId so row-level security covers line tables directly, not only through the parent.</summary>
+public class OperationLine : TenantEntity
 {
     public Guid OperationId { get; set; }
     public string? Epc { get; set; }
@@ -70,7 +71,7 @@ public class Stocktake : TenantEntity
     public List<StocktakeLine> Lines { get; set; } = new();
 }
 
-public class StocktakeLine : EntityBase
+public class StocktakeLine : TenantEntity
 {
     public Guid StocktakeId { get; set; }
     public Guid? ItemId { get; set; }

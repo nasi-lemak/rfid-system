@@ -82,15 +82,5 @@ public class MqttIngestService : BackgroundService
     }
 
     /// <summary>MQTT wildcard matching (+ single level, # multi level).</summary>
-    public static bool TopicMatches(string pattern, string topic)
-    {
-        var p = pattern.Split('/'); var t = topic.Split('/');
-        for (var i = 0; i < p.Length; i++)
-        {
-            if (p[i] == "#") return true;
-            if (i >= t.Length) return false;
-            if (p[i] != "+" && p[i] != t[i]) return false;
-        }
-        return p.Length == t.Length;
-    }
+    public static bool TopicMatches(string pattern, string topic) => Rfid.Protocols.TopicMatcher.Matches(pattern, topic);
 }

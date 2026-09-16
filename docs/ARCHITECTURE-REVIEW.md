@@ -393,8 +393,10 @@ triggers with per-item de-duplication and the `RunOperation` action (executed po
 outbox), **7.6** bizStep/disposition as operation-definition data with capture mapping. Also done
 from §8: outbox retention dataset. v2.2 delivered **7.2** guided workflows (steps as
 operations, no engine) and the first part of **7.8** (desired reader configuration pulled by the
-edge agent), plus site filtering for presence and positions. Remaining from §8: site filtering for
-reports/dashboards/analytics; line-table isolation; MQTT bridge on the edge (see `EDGE-AGENT.md`).
+edge agent), plus site filtering for presence and positions. v2.3 closed the rest of §8 (site scoping for
+reports/dashboards/analytics via `SiteScope`, line-table isolation, edge MQTT bridge) and delivered
+the **7.7** position-ingest contract for vendor RTLS engines and **7.10** query-model consolidation
+(one scoped query model behind `/api/dashboard`, widgets, reports and analytics).
 
 ### Ordering recommendation
 

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Rfid.Application.Contracts;
+using Rfid.Protocols;
 using Rfid.Application.Positioning;
 using Rfid.Domain.Entities;
 
@@ -44,6 +45,41 @@ public class PositionService
         if (moved) _db.PositionFixes.Add(new PositionFix { TenantId = item.TenantId, ItemId = item.Id, LocationId = zone.Key, X = x, Y = y, AccuracyM = acc, At = at });
         item.PositionX = x; item.PositionY = y; item.PositionLocationId = zone.Key; item.PositionAt = at; item.PositionAccuracyM = acc;
         return est with { X = x, Y = y, AccuracyM = acc };
+    }
+
+    public record ExternalApply(PositionIngestResult Result);
+
+    /// <summary>
+    /// Applies positions computed elsewhere (vendor RTLS engine, edge agent). Same effect as <see cref="Update(Item, IEnumerable{Sighting}, DateTime)"/>:
+    /// a PositionFix when the item moved and the item's current position. Idempotent per (device, batchId); one SaveChanges.
+    /// </summary>
+    public async Task<PositionIngestResult> ApplyExternalAsync(PositionBatchRequest batch, Services.TagResolver tags, Guid tenantId, CancellationToken ct = default)
+    {
+        var result = new PositionIngestResult { Received = batch.Fixes.Count };
+        var key = string.IsNullOrWhiteSpace(batch.BatchId) ? null : $"{batch.DeviceId?.ToString("N") ?? "-"}:{batch.BatchId.Trim()}";
+        if (key != null && await _db.IdempotencyKeys.AnyAsync(k => k.Scope == "position-batch" && k.Key == key, ct)) { result.Duplicate = true; return result; }
+        var epcs = batch.Fixes.Where(f => !string.IsNullOrWhiteSpace(f.Epc)).Select(f => f.Epc!).Distinct().ToList();
+        var tagMap = epcs.Count > 0 ? await tags.ResolveAsync(epcs, ct) : new Dictionary<string, Tag>();
+        var itemIds = batch.Fixes.Where(f => f.ItemId.HasValue).Select(f => f.ItemId!.Value).Distinct().ToList();
+        var items = itemIds.Count > 0 ? await _db.Items.Where(i => itemIds.Contains(i.Id)).ToDictionaryAsync(i => i.Id, ct) : new Dictionary<Guid, Item>();
+        var locIds = batch.Fixes.Select(f => f.LocationId).Distinct().ToList();
+        var locs = await _db.Locations.Where(l => locIds.Contains(l.Id)).Select(l => l.Id).ToListAsync(ct);
+        foreach (var f in batch.Fixes.OrderBy(f => f.At ?? DateTime.UtcNow))
+        {
+            Item? item = f.ItemId.HasValue ? items.GetValueOrDefault(f.ItemId.Value) : f.Epc != null && tagMap.TryGetValue(Services.TagResolver.Normalize(f.Epc), out var tag) ? tag.Item : null;
+            if (item == null) { result.Unknown++; continue; }
+            if (!locs.Contains(f.LocationId) || double.IsNaN(f.X) || double.IsNaN(f.Y)) { result.Rejected++; continue; }
+            var at = f.At?.ToUniversalTime() ?? DateTime.UtcNow;
+            if (item.PositionAt.HasValue && at < item.PositionAt.Value) { result.Rejected++; continue; }   // late fix never moves the position backwards
+            var moved = item.PositionX == null || item.PositionLocationId != f.LocationId || Math.Abs(item.PositionX.Value - f.X) + Math.Abs((item.PositionY ?? 0) - f.Y) > MinMoveM || item.PositionAt == null || at - item.PositionAt.Value > StationarySampleEvery;
+            if (moved) _db.PositionFixes.Add(new PositionFix { TenantId = item.TenantId, ItemId = item.Id, LocationId = f.LocationId, X = f.X, Y = f.Y, AccuracyM = f.AccuracyM, At = at });
+            item.PositionX = f.X; item.PositionY = f.Y; item.PositionLocationId = f.LocationId; item.PositionAt = at; item.PositionAccuracyM = f.AccuracyM;
+            item.LastSeenAt = item.LastSeenAt.HasValue && item.LastSeenAt > at ? item.LastSeenAt : at;
+            result.Applied++;
+        }
+        if (key != null) _db.IdempotencyKeys.Add(new IdempotencyKey { TenantId = tenantId, Scope = "position-batch", Key = key, Response = System.Text.Json.JsonSerializer.Serialize(result) });
+        await _db.SaveChangesAsync(ct);
+        return result;
     }
 
     public static (double w, double h)? Bounds(Location? loc)

@@ -59,7 +59,7 @@ for historical services); **folders declare ownership**:
 | `Encoding/` | GS1 encoding, serial pools, labels, print queue | `EncodingService`, `LabelService`, `LabelDesign`, `PrintQueueService` |
 | `Integrations/` | Outbound ERP/BI delivery (via the outbox), EPCIS, warehouse export | `IntegrationService`, `IntegrationOutboxHandler`, `PayloadFormatters`, `EpcisService`, `WarehouseExportService` |
 | `Billing/` | Custody events → ledger → invoices | `BillingService` |
-| `Analytics/` | Dashboards, reports, analytics, maintenance forecasting | `DashboardService`, `ReportService`, `AnalyticsService`, `MaintenanceService` |
+| `Analytics/` | Dashboards (widgets + overview), reports, analytics, maintenance forecasting — all over `SiteScope` | `DashboardService`, `ReportService`, `AnalyticsService`, `MaintenanceService` |
 | `Geo/` | GPS fixes and geofences | `GeoService` |
 | `Platform/` | Cross-cutting infrastructure | `Outbox`, `OutboxDispatcher` + `IOutboxHandler`, `LeaseService`, `RetentionService` |
 | `Security/` | Site-level access, SSO mapping, hashing | `ISiteAccess`/`SiteAccess`, `SsoUserMapper`, `PasswordHasher` |
@@ -181,6 +181,10 @@ reads  ──►  TagRead (raw, per read)  ──►  item.LastSeen*  ──► 
   "Out"}` shape, so one rule vocabulary covers portals and presence.
 - `batchId` makes a batch idempotent: the key is committed with the reads and a replay is
   acknowledged (`duplicate: true`) without re-emitting events.
+- **Positions from outside** (`POST /api/ingest/positions`): vendor RTLS engines (UWB TDoA, BLE
+  AoA, vision) or an edge agent post x/y per item inside a floor-plan location. The platform stores
+  fixes and updates the item exactly as its own trilateration does, idempotent by `batchId`, and a
+  late fix never moves a position backwards. Solvers stay with the vendor.
 - Unknown EPCs are stored (`ItemId = null`) for later commissioning.
 
 - **Late reads.** `readAt` is authoritative. A read older than the item's `LastSeenAt` (a batch
@@ -237,8 +241,8 @@ Two independent layers isolate tenants:
    re-applied at startup, and asserted by a test for every `TenantEntity`. The API connects as
    the non-owner role `rfid_app` (owners bypass RLS); migrations run as the owner
    (`ConnectionStrings:Migrations`). Tables without `TenantId` (`tenants`, `solution_templates`,
-   `worker_leases`, `operation_lines`, `stocktake_lines`) are global or reached only through a
-   tenant-scoped parent.
+   `worker_leases`) are global; `operation_lines` and `stocktake_lines` carry `TenantId` too, so RLS
+   covers every table that holds tenant data.
 
 **Authentication**: JWT for users (`Admin`/`Operator`/`Viewer`), device tokens for readers
 (`Device`), OIDC as a second bearer scheme with JIT provisioning. Login takes an optional
@@ -247,7 +251,10 @@ Two independent layers isolate tenants:
 **Site RBAC** (`ISiteAccess`): users may be restricted to site subtrees with a role per site;
 items, locations, devices, alerts, events, raw reads, presence (zones, muster, timing), positions
 (floor plans, heat maps, history) and operation/stocktake writes (single and batch) are
-filtered/enforced by `Path`. Reports, dashboards and analytics remain tenant-wide aggregates.
+filtered/enforced by `Path`. Aggregates use the same rule through one helper, `SiteScope`
+(`Security/SiteScope.cs`): reports, analytics, dashboard widgets, the overview summary and reader
+uptime all take a scope and see only locations inside the principal's sites, items there, and
+events/alerts/reads/operations/sessions touching them.
 
 **Portals**: party-scoped read-only principals see only `/api/portal/*`.
 

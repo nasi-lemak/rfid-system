@@ -193,6 +193,6 @@ public class ImportAndPrintQueueTests
         Assert.Equal(0, await q.ProcessAsync(now.AddMinutes(1).AddSeconds(5))); // not due yet
         Assert.Equal(0, await q.ProcessAsync(now.AddMinutes(2)));
         Assert.Equal(PrintJobStatus.Failed, (await h.Db.PrintJobs.FirstAsync(x => x.Id == reprint[0].Id)).Status);
-        var (cols, rows) = await new ReportService(h.Db).RunAsync("print-jobs", new Dictionary<string, string?>()); Assert.Equal(2, rows.Count);
+        var (cols, rows) = await new ReportService(h.Db).RunAsync("print-jobs", new Dictionary<string, string?>(), Rfid.Application.Security.SiteScope.All); Assert.Equal(2, rows.Count);
     }
 }

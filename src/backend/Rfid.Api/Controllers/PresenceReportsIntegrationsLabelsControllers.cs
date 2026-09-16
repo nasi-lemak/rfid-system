@@ -55,10 +55,10 @@ public class ReportsController : ControllerBase
 
     /// <summary>Runs a report. format=json (default) or csv. Other query parameters are passed to the report (days, from, to, type).</summary>
     [HttpGet("{code}")]
-    public async Task<IActionResult> Run(string code, string format = "json", CancellationToken ct = default)
+    public async Task<IActionResult> Run(string code, [FromServices] ISiteAccess sites, [FromServices] AppDbContext db, string format = "json", CancellationToken ct = default)
     {
         var p = Request.Query.ToDictionary(k => k.Key, k => (string?)k.Value.ToString(), StringComparer.OrdinalIgnoreCase);
-        var (columns, rows) = await _svc.RunAsync(code, p, ct);
+        var (columns, rows) = await _svc.RunAsync(code, p, await SiteScope.ForAsync(sites, db, ct), ct);
         if (format.Equals("csv", StringComparison.OrdinalIgnoreCase))
             return File(System.Text.Encoding.UTF8.GetBytes(ReportService.ToCsv(columns, rows)), "text/csv", $"{code}-{DateTime.UtcNow:yyyyMMdd-HHmm}.csv");
         return Ok(new { columns, rows, count = rows.Count });

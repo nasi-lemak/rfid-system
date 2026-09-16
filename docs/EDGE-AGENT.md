@@ -77,6 +77,19 @@ whose options differ, disconnects readers no longer assigned, and stores the con
 `<queue>/config.json` so an offline restart keeps driving the same readers. The local `Readers` list
 is the baseline used until the first successful pull (or always, with `PullConfigSeconds: 0`).
 
+## MQTT bridge
+
+Readers that publish to a local broker keep working through a WAN outage when the agent bridges them:
+
+```json
+"Mqtt": { "Enabled": true, "Host": "broker.local", "Port": 1883, "Username": null, "Password": null,
+          "Topics": [ "rfid/#" ], "Devices": { "rfid/site1/dock1": "<reader device id>", "impinj/+/events": "<reader device id>" }, "Vendor": null }
+```
+
+Publications are parsed with the same Impinj/Zebra/generic adapters as on the server, attributed to
+the device whose topic filter matches (MQTT `+`/`#` wildcards, or a `deviceId` in the payload), and
+queued like LLRP reads.
+
 ## Reader pushes
 
 With `Listen` set, readers that push HTTP (Impinj IoT Interface, Zebra IoT Connector, or any JSON
@@ -97,5 +110,5 @@ The agent answers `202 {"accepted": n}` immediately; the reads join the same buf
 - `poison/` holds rejected batches with a `.reason` file each; inspect and delete by hand.
 - A reader that is both configured on the agent and not marked `edgeManaged` on the server will be
   read twice (once by each). The server-side badge *Edge agent* on the device card shows the flag.
-- MQTT-publishing readers keep using the server's MQTT subscriber; an on-site broker bridge is the
-  natural extension if MQTT must also survive WAN loss.
+- MQTT-publishing readers can use either the server's MQTT subscriber or the agent's bridge (above);
+  do not enable both for the same topics or reads will be ingested twice.

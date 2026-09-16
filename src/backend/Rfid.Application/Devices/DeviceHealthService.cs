@@ -89,10 +89,10 @@ public class DeviceHealthService
     public record UptimeRow(Guid DeviceId, string Name, DeviceHealth Health, int Heartbeats, int Expected, double UptimePercent, DateTime? LastHeartbeatAt, string? FirmwareVersion, int SlaMinutes);
 
     /// <summary>Uptime over the window ≈ heartbeats received ÷ heartbeats expected at the device's SLA interval.</summary>
-    public async Task<List<UptimeRow>> UptimeAsync(TimeSpan window, DateTime? now = null, CancellationToken ct = default)
+    public async Task<List<UptimeRow>> UptimeAsync(TimeSpan window, DateTime? now = null, Security.SiteScope? scope = null, CancellationToken ct = default)
     {
         var t = now ?? DateTime.UtcNow; var from = t - window;
-        var devices = await _db.Devices.OrderBy(d => d.Name).ToListAsync(ct);
+        var devices = await (scope ?? Security.SiteScope.All).Devices(_db.Devices).OrderBy(d => d.Name).ToListAsync(ct);
         var counts = await _db.DeviceHeartbeats.Where(h => h.At >= from && h.At <= t).GroupBy(h => h.DeviceId).Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count, ct);
         return devices.Select(d =>
         {

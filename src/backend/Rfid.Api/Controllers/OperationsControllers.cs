@@ -146,6 +146,14 @@ public class IngestController : ControllerBase
     [HttpPost("reads")]
     public async Task<ActionResult<IngestResult>> Reads(ReadBatchRequest batch, CancellationToken ct) => Ok(await _svc.IngestAsync(batch, ReadSource.Fixed, ct));
 
+    /// <summary>Positions from an external RTLS engine (UWB TDoA, BLE AoA, vision) or an edge agent: x/y per item inside a floor-plan location, idempotent by batchId.</summary>
+    [HttpPost("positions")]
+    public async Task<ActionResult<PositionIngestResult>> Positions(PositionBatchRequest batch, [FromServices] PositionService positions, [FromServices] TagResolver tags, [FromServices] ICurrentContext ctx, CancellationToken ct)
+    {
+        batch.DeviceId ??= ctx.DeviceId;
+        return Ok(await positions.ApplyExternalAsync(batch, tags, ctx.TenantId, ct));
+    }
+
     /// <summary>Handheld free-scan (inventory mode) reads: same pipeline, tagged as handheld, location taken from the request.</summary>
     [HttpPost("handheld")]
     public async Task<ActionResult<IngestResult>> Handheld(ReadBatchRequest batch, CancellationToken ct) => Ok(await _svc.IngestAsync(batch, ReadSource.Handheld, ct));
@@ -360,42 +368,10 @@ public class EventsController : ControllerBase
 [ApiController, Route("api/dashboard"), Authorize]
 public class DashboardController : ControllerBase
 {
-    private readonly AppDbContext _db;
-    public DashboardController(AppDbContext db) => _db = db;
+    private readonly DashboardService _svc; private readonly ISiteAccess _sites; private readonly AppDbContext _db;
+    public DashboardController(DashboardService svc, ISiteAccess sites, AppDbContext db) { _svc = svc; _sites = sites; _db = db; }
 
+    /// <summary>Overview totals and breakdowns, scoped to the caller's sites (same query model as widgets, reports and analytics).</summary>
     [HttpGet]
-    public async Task<IActionResult> Summary()
-    {
-        var now = DateTime.UtcNow;
-        var items = _db.Items.Where(i => i.Status != ItemStatus.Disposed);
-        var byStatus = await _db.Items.GroupBy(i => i.Status).Select(g => new { Status = g.Key.ToString(), Count = g.Count() }).ToListAsync();
-        var byType = await items.Include(i => i.ItemType).GroupBy(i => i.ItemType!.Name).Select(g => new { Type = g.Key, Count = g.Count() }).OrderByDescending(x => x.Count).Take(12).ToListAsync();
-        var byState = await items.Where(i => i.State != null).GroupBy(i => i.State!).Select(g => new { State = g.Key, Count = g.Count() }).OrderByDescending(x => x.Count).Take(12).ToListAsync();
-        var byLocation = await items.Include(i => i.CurrentLocation).Where(i => i.CurrentLocation != null).GroupBy(i => i.CurrentLocation!.Name).Select(g => new { Location = g.Key, Count = g.Count() }).OrderByDescending(x => x.Count).Take(10).ToListAsync();
-        var since = now.AddDays(-14);
-        var readsPerDay = await _db.TagReads.Where(r => r.ReadAt >= since).GroupBy(r => r.ReadAt.Date).Select(g => new { Day = g.Key, Count = g.Count() }).OrderBy(x => x.Day).ToListAsync();
-        var opsPerDay = await _db.Operations.Where(o => o.StartedAt >= since).GroupBy(o => o.StartedAt.Date).Select(g => new { Day = g.Key, Count = g.Count() }).OrderBy(x => x.Day).ToListAsync();
-        return Ok(new
-        {
-            totals = new
-            {
-                items = await items.CountAsync(),
-                tags = await _db.Tags.CountAsync(t => t.Status == TagStatus.Active),
-                locations = await _db.Locations.CountAsync(),
-                devices = await _db.Devices.CountAsync(),
-                openAlerts = await _db.Alerts.CountAsync(a => a.Status == AlertStatus.Open),
-                criticalAlerts = await _db.Alerts.CountAsync(a => a.Status == AlertStatus.Open && a.Severity == Severity.Critical),
-                inCustody = await items.CountAsync(i => i.CustodianPartyId != null),
-                overdue = await items.CountAsync(i => i.DueBackAt != null && i.DueBackAt < now),
-                missing = await _db.Items.CountAsync(i => i.Status == ItemStatus.Missing),
-                expiring30d = await items.CountAsync(i => i.ExpiryDate != null && i.ExpiryDate <= DateOnly.FromDateTime(now.AddDays(30))),
-                inspectionDue14d = await items.CountAsync(i => i.NextInspectionDue != null && i.NextInspectionDue <= now.AddDays(14)),
-                notSeen7d = await items.CountAsync(i => i.LastSeenAt == null || i.LastSeenAt < now.AddDays(-7)),
-                readsToday = await _db.TagReads.CountAsync(r => r.ReadAt >= now.Date),
-                operationsToday = await _db.Operations.CountAsync(o => o.StartedAt >= now.Date),
-                openStocktakes = await _db.Stocktakes.CountAsync(s => s.Status == StocktakeStatus.Open),
-            },
-            byStatus, byType, byState, byLocation, readsPerDay, opsPerDay,
-        });
-    }
+    public async Task<IActionResult> Summary(CancellationToken ct) => Ok(await _svc.OverviewAsync(await SiteScope.ForAsync(_sites, _db, ct), ct));
 }

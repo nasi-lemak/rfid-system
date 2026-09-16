@@ -273,6 +273,16 @@ decisions and the re-assessed roadmap are in
   restarts.
 - **Site RBAC** extended to presence, floor plans, heat maps and position history.
 
+## v2.3 — one query model for aggregates, isolation and RTLS ingest
+
+- **Site-scoped aggregates** — reports, analytics, dashboard widgets, the overview and reader uptime
+  share one scoping rule (`SiteScope`); site-restricted users see only their sites everywhere.
+- **Line-table isolation** — operation and stocktake lines carry the tenant id and are covered by
+  row-level security directly.
+- **Vendor RTLS ingest** — `POST /api/ingest/positions` accepts x/y fixes from UWB TDoA, BLE AoA or
+  vision engines and an edge agent, idempotent by batch, updating items like the built-in solver.
+- **Edge MQTT bridge** — the agent can subscribe to an on-site broker so MQTT readers survive WAN loss.
+
 ## Roadmap
 
 Re-assessed from first principles in [`docs/ARCHITECTURE-REVIEW.md`](docs/ARCHITECTURE-REVIEW.md) §7.

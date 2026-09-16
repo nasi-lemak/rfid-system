@@ -36,11 +36,11 @@ global query filter in the application and a Postgres **row-level-security** pol
 | `operation_definitions` | Id, Code (unique per tenant), Name, Description, BaseType (built-in family), EventType, Effects *(jsonb [{kind, params}])*, Requires *(jsonb {toLocation, party, container, targetState, quantity, fromStates})*, EventData *(jsonb)*, ItemTypeCodes *(jsonb)*, Enabled, IsBuiltIn, Vertical, Icon — tenant/template-defined operations; the 14 built-ins are code-defined in `OperationCatalog` and not stored |
 | `workflows` | Id, Code (unique per tenant), Name, Description, Enabled, Vertical, Icon, ItemTypeCodes *(jsonb)*, Steps *(jsonb [{key, title, prompt, operation, ask, fixed, rescan, optional, onRejected}])* |
 | `operations` | Id, Type (base type: Receive/Transfer/Issue/Return/Count/Dispatch/Inspect/Maintain/Dispose/Pack/Unpack/ProcessStage/Commission/Adjust), **DefinitionCode** (the operation that ran, e.g. `Sterilise`), **ClientId** (idempotency key, unique per tenant), **WorkflowRunId / WorkflowCode / WorkflowStep** (guided-workflow context, indexed by run), Status (Draft/Completed/Cancelled), FromLocationId, ToLocationId, PartyId, ContainerItemId, TargetState, Reference, Notes, DeviceId, UserId, StartedAt, CompletedAt |
-| `operation_lines` | Id, OperationId, Epc, ItemId, Quantity, Result (Ok/Unknown/Unexpected/Rejected), Message |
+| `operation_lines` | Id, TenantId, OperationId, Epc, ItemId, Quantity, Result (Ok/Unknown/Unexpected/Rejected), Message |
 | `item_events` | Id, ItemId, Type (Created/Seen/Moved/CustodyChanged/StateChanged/Counted/QuantityChanged/Packed/Unpacked/Inspected/Maintained/Disposed/Commissioned/Alert), FromLocationId, ToLocationId, FromPartyId, ToPartyId, FromState, ToState, OperationId, DeviceId, UserId, OccurredAt, Data *(jsonb)* |
 | `tag_reads` | Id, Epc, Tid, ItemId, DeviceId, AntennaPort, Rssi, ReadAt, LocationId, Source (Handheld/Fixed/Manual) — raw, high-volume, partition-friendly |
 | `stocktakes` | Id, Name, LocationId, ItemTypeId, Status (Open/Reconciled/Applied/Cancelled), ExpectedCount, FoundCount, MissingCount, UnexpectedCount, StartedAt, CompletedAt, UserId |
-| `stocktake_lines` | Id, StocktakeId, ItemId, Epc, Expected, Found, Result (Found/Missing/Unexpected/Unknown), FoundAt, FoundLocationId |
+| `stocktake_lines` | Id, TenantId, StocktakeId, ItemId, Epc, Expected, Found, Result (Found/Missing/Unexpected/Unknown), FoundAt, FoundLocationId |
 
 ## Rules
 | Table | Key columns |

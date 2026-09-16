@@ -21,6 +21,13 @@ movements and rule evaluation. When several antennas or gateways see one tag in 
 
 ## Positioning (x/y trilateration)
 
+**External engines.** `POST /api/ingest/positions {deviceId?, batchId?, fixes:[{epc|itemId, locationId,
+x, y, z?, accuracyM?, at?}]}` accepts positions computed by a vendor RTLS engine (UWB TDoA, BLE AoA,
+camera) or an edge agent: `locationId` is the floor plan the coordinates are relative to; fixes update
+the item's position and history exactly like the built-in trilateration; `batchId` makes the batch
+idempotent and an older fix never moves a position backwards. Response: `{received, applied, unknown,
+rejected, duplicate}`.
+
 Give antennas anchor coordinates (`X`, `Y` in metres; Readers & devices) and the zone a size
 (location attributes `widthM`, `heightM`). When one tag is seen by several positioned antennas in a
 batch, ingestion converts RSSI to distance with the log-distance model (`RssiAt1m`, default −45 dBm;

@@ -14,6 +14,22 @@ public class EdgeOptions
     public int HeartbeatSeconds { get; set; } = 60;
     /// <summary>How often to pull the desired reader configuration from the platform (readers assigned to this gateway); 0 disables and only the local Readers list is used.</summary>
     public int PullConfigSeconds { get; set; } = 60;
+    /// <summary>Optional on-site MQTT bridge: subscribe to a local broker and queue reader publications like any other read source.</summary>
+    public MqttOptions Mqtt { get; set; } = new();
+
+    public class MqttOptions
+    {
+        public bool Enabled { get; set; }
+        public string Host { get; set; } = "localhost";
+        public int Port { get; set; } = 1883;
+        public string? Username { get; set; }
+        public string? Password { get; set; }
+        public List<string> Topics { get; set; } = new() { "rfid/#" };
+        /// <summary>Topic filter (MQTT wildcards) → platform device id the reads are attributed to.</summary>
+        public Dictionary<string, Guid> Devices { get; set; } = new();
+        /// <summary>Payload format hint (impinj, zebra) when it cannot be inferred; null = auto.</summary>
+        public string? Vendor { get; set; }
+    }
 
     public class ServerOptions
     {
