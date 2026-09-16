@@ -24,6 +24,7 @@ public class EdgeAgentTests : IDisposable
             return Task.FromResult((outcome, outcome == PostOutcome.Delivered ? new IngestResult { Received = batch.Reads.Count } : null, outcome == PostOutcome.Delivered ? null : "boom"));
         }
         public Task HeartbeatAsync(Guid? deviceId, object metrics, CancellationToken ct) => Task.CompletedTask;
+        public Task<EdgeConfig?> GetConfigAsync(CancellationToken ct) => Task.FromResult<EdgeConfig?>(null);
     }
 
     private static ReadBatchRequest Batch(string epc) => new() { DeviceId = Guid.NewGuid(), Reads = { new ReadRequest { Epc = epc, ReadAt = DateTime.UtcNow } } };

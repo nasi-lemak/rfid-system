@@ -391,8 +391,10 @@ Delivered: **7.1** edge agent (`Rfid.Edge` + shared `Rfid.Protocols`, late-read 
 ingestion), **7.5** integrations on the outbox with item-type/site filters, **7.3** schedule
 triggers with per-item de-duplication and the `RunOperation` action (executed post-commit via the
 outbox), **7.6** bizStep/disposition as operation-definition data with capture mapping. Also done
-from §8: outbox retention dataset. Remaining from §8: site filtering for presence/positions/
-analytics; line-table isolation; MQTT bridge on the edge (see `EDGE-AGENT.md`).
+from §8: outbox retention dataset. v2.2 delivered **7.2** guided workflows (steps as
+operations, no engine) and the first part of **7.8** (desired reader configuration pulled by the
+edge agent), plus site filtering for presence and positions. Remaining from §8: site filtering for
+reports/dashboards/analytics; line-table isolation; MQTT bridge on the edge (see `EDGE-AGENT.md`).
 
 ### Ordering recommendation
 

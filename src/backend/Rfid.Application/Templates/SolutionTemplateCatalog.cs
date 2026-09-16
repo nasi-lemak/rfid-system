@@ -37,6 +37,14 @@ public static class SolutionTemplateCatalog
         Name = name, Type = type, Required = required, Options = options.Length == 0 ? null : options.ToList(),
     };
     private static readonly OperationType[] AllOps = Enum.GetValues<OperationType>();
+    private static WorkflowStep Step(string key, string title, string operation, string? prompt = null, string[]? ask = null, bool rescan = false, bool optional = false, string onRejected = "stop") => new()
+    {
+        Key = key, Title = title, Operation = operation, Prompt = prompt, Ask = ask?.ToList() ?? new(), Rescan = rescan, Optional = optional, OnRejected = onRejected,
+    };
+    private static WorkflowDefinition Wf(string code, string name, string description, string icon, string[]? itemTypes, params WorkflowStep[] steps) => new()
+    {
+        Code = code, Name = name, Description = description, Icon = icon, ItemTypeCodes = itemTypes?.ToList() ?? new(), Steps = steps.ToList(), Enabled = true,
+    };
 
     public static readonly List<SolutionTemplate> All = new()
     {
@@ -118,6 +126,13 @@ public static class SolutionTemplateCatalog
                     Op("Calibrate", "Calibrate", "Record a calibration: inspection result plus the 'calibrated' flag", OperationType.Inspect, ItemEventType.Inspected, null, new[] { "TOOL" }, ("inspecting", "conformant"),
                         Fx(OperationEffectKinds.RecordInspection), Fx(OperationEffectKinds.SetAttribute, ("key", "calibrated"), ("value", true)), Fx(OperationEffectKinds.SetAttribute, ("key", "calibratedAt"), ("value", "{now}"))),
                 },
+                Workflows =
+                {
+                    Wf("tool-return-check", "Tool return & check", "Take tools back into the crib, inspect them and record calibration where due", "🧰", new[] { "TOOL" },
+                        Step("return", "Return to crib", "Return", "Scan the tools coming back; they leave the borrower's custody.", ask: new[] { "toLocation" }),
+                        Step("inspect", "Inspect", "Inspect", "Check each tool. Target state = Passed or Failed.", ask: new[] { "targetState" }, onRejected: "continue"),
+                        Step("calibrate", "Calibrate", "Calibrate", "Only for tools due for calibration – skip otherwise.", optional: true, rescan: true)),
+                },
                 Rules =
                 {
                     Alert("Tool overdue", ItemEventType.Seen, Severity.Warning, "{item.name} is overdue for return", C("item.overdue", "eq", true)),
@@ -130,6 +145,7 @@ public static class SolutionTemplateCatalog
         new SolutionTemplate
         {
             Code = "linen-laundry", Name = "Linen, Laundry & Uniforms", Vertical = "Textiles",
+            // workflows are added below via the Definition initializer
             Description = "Hotel/hospital linen, uniforms, textile batches: wash cycles, issue/return, contamination status, shrinkage and retirement.",
             Definition = new()
             {
@@ -150,6 +166,12 @@ public static class SolutionTemplateCatalog
                     Alert("Contaminated linen in clean zone", ItemEventType.Moved, Severity.Critical, "Contaminated {item.name} detected in {toLocation.name}", C("item.state", "eq", "Contaminated"), C("toLocation.clean", "eq", true)),
                 },
                 Operations = { OperationType.Issue, OperationType.Return, OperationType.ProcessStage, OperationType.Count, OperationType.Pack, OperationType.Unpack, OperationType.Dispose, OperationType.Commission },
+                Workflows =
+                {
+                    Wf("wash-cycle", "Wash cycle", "Soiled linen through the wash and back to clean stock", "🧺", new[] { "LINEN" },
+                        Step("in-wash", "Load washer", "ProcessStage", "Scan the soiled linen going into the washer.", ask: new[] { "targetState" }),
+                        Step("clean", "Unload clean", "ProcessStage", "Scan linen coming out clean; choose the clean-store shelf.", ask: new[] { "targetState", "toLocation" }, rescan: true)),
+                },
             }
         },
         new SolutionTemplate
@@ -201,6 +223,13 @@ public static class SolutionTemplateCatalog
                         Fx(OperationEffectKinds.SetState), Fx(OperationEffectKinds.Move, ("optional", true))),
                     Op("Sterilise", "Sterilise", "Autoclave cycle complete: Decontaminated → Sterilised, cycle count +1, sterile-store placement", OperationType.ProcessStage, ItemEventType.StateChanged, null, new[] { "TRAY", "INSTRUMENT" }, ("sterilizing", "sterile"),
                         Fx(OperationEffectKinds.SetState), Fx(OperationEffectKinds.Move, ("optional", true)), Fx(OperationEffectKinds.SetAttribute, ("key", "lastSterilisedAt"), ("value", "{now}"))),
+                },
+                Workflows =
+                {
+                    Wf("cssd-reprocess", "CSSD reprocessing", "Dirty trays back from theatre → washer/disinfector → autoclave → sterile store", "🧪", new[] { "TRAY" },
+                        Step("return", "Receive dirty trays", "Return", "Scan trays returning from theatre. They become Dirty."),
+                        Step("decontaminate", "Decontaminate", "Decontaminate", "After the washer/disinfector cycle, scan the trays coming out.", rescan: true),
+                        Step("sterilise", "Sterilise", "Sterilise", "After the autoclave cycle: scan the load and choose the sterile store it goes to.", ask: new[] { "toLocation" }, rescan: true)),
                 },
                 Rules =
                 {

@@ -15,33 +15,38 @@ namespace Rfid.Edge;
 /// </summary>
 public sealed class EdgeAgent : BackgroundService
 {
-    private readonly EdgeOptions _o; private readonly ILogger<EdgeAgent> _log; private readonly EdgeQueue _queue; private readonly ReadBuffer _buffer; private readonly Forwarder _forwarder; private readonly IServerClient _server;
-    private readonly Dictionary<Guid, LlrpClient> _readers = new();
+    private readonly EdgeOptions _o; private readonly ILogger<EdgeAgent> _log; private readonly EdgeQueue _queue; private readonly ReadBuffer _buffer; private readonly Forwarder _forwarder; private readonly IServerClient _server; private readonly ReaderCatalog _catalog;
+    private readonly Dictionary<Guid, (LlrpClient client, string key)> _readers = new();
     private HttpListener? _listener;
 
-    public EdgeAgent(IOptions<EdgeOptions> o, ILogger<EdgeAgent> log, EdgeQueue queue, ReadBuffer buffer, Forwarder forwarder, IServerClient server)
-    { _o = o.Value; _log = log; _queue = queue; _buffer = buffer; _forwarder = forwarder; _server = server; }
+    public EdgeAgent(IOptions<EdgeOptions> o, ILogger<EdgeAgent> log, EdgeQueue queue, ReadBuffer buffer, Forwarder forwarder, IServerClient server, ReaderCatalog catalog)
+    { _o = o.Value; _log = log; _queue = queue; _buffer = buffer; _forwarder = forwarder; _server = server; _catalog = catalog; }
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
-        _log.LogInformation("Edge agent {Agent} → {Server}; {Readers} reader(s); queue {Path} ({Pending} pending, next #{Seq})", _o.AgentId, _o.Server.Url, _o.Readers.Count(r => r.Enabled), _o.Queue.Path, _queue.Count, _queue.NextSequence);
+        _log.LogInformation("Edge agent {Agent} → {Server}; {Readers} reader(s) ({Source}); queue {Path} ({Pending} pending, next #{Seq})", _o.AgentId, _o.Server.Url, _catalog.Current().Count, _catalog.FromServer ? "server revision " + _catalog.Revision : "local config", _o.Queue.Path, _queue.Count, _queue.NextSequence);
         if (!string.IsNullOrWhiteSpace(_o.Listen)) _ = ListenAsync(ct);
         var flush = Task.Run(() => FlushLoopAsync(ct), ct);
         var forward = Task.Run(() => ForwardLoopAsync(ct), ct);
         var heartbeat = Task.Run(() => HeartbeatLoopAsync(ct), ct);
         var readers = Task.Run(() => ReaderLoopAsync(ct), ct);
-        await Task.WhenAll(flush, forward, heartbeat, readers);
+        var config = Task.Run(() => ConfigLoopAsync(ct), ct);
+        await Task.WhenAll(flush, forward, heartbeat, readers, config);
     }
 
     // ---- readers -------------------------------------------------------------------------------------------
+    private readonly SemaphoreSlim _readerWake = new(0, 1);
+
     private async Task ReaderLoopAsync(CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
         {
-            foreach (var r in _o.Readers.Where(r => r.Enabled && !string.IsNullOrWhiteSpace(r.Host)))
+            var wanted = _catalog.Current().Where(r => !string.IsNullOrWhiteSpace(r.Host)).ToList();
+            foreach (var r in wanted)
             {
-                if (_readers.TryGetValue(r.DeviceId, out var existing) && existing.Connected) continue;
-                if (existing != null) { await existing.StopAsync(); _readers.Remove(r.DeviceId); }
+                var key = ReaderCatalog.Key(r);
+                if (_readers.TryGetValue(r.DeviceId, out var existing) && existing.client.Connected && existing.key == key) continue;
+                if (existing.client != null) { await existing.client.StopAsync(); _readers.Remove(r.DeviceId); }
                 var client = new LlrpClient(r.Host, r.Port);
                 var deviceId = r.DeviceId;
                 client.Log += m => _log.LogInformation("LLRP {Device}: {Message}", deviceId, m);
@@ -49,13 +54,36 @@ public sealed class EdgeAgent : BackgroundService
                 try
                 {
                     await client.StartAsync(new LlrpReaderOptions { TransmitPowerDbm = r.PowerDbm, Session = r.Session, TagPopulation = r.TagPopulation, AntennaIds = r.Antennas, GpiStartPort = r.GpiStartPort, ReportEveryNTags = 1 }, ct);
-                    _readers[r.DeviceId] = client;
+                    _readers[r.DeviceId] = (client, key);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException) { _log.LogWarning("LLRP {Host}:{Port}: {Message}; will retry", r.Host, r.Port, ex.Message); await client.StopAsync(); }
             }
-            await Task.Delay(TimeSpan.FromSeconds(30), ct);
+            // Readers no longer assigned to this agent are disconnected.
+            foreach (var stale in _readers.Keys.Except(wanted.Select(w => w.DeviceId)).ToList()) { if (_readers.Remove(stale, out var sc)) await sc.client.StopAsync(); _log.LogInformation("LLRP {Device}: no longer assigned; disconnected", stale); }
+            try { await _readerWake.WaitAsync(TimeSpan.FromSeconds(30), ct); } catch (OperationCanceledException) { break; }
         }
-        foreach (var c in _readers.Values) await c.StopAsync();
+        foreach (var c in _readers.Values) await c.client.StopAsync();
+    }
+
+    /// <summary>Pulls the desired configuration (readers assigned to this gateway) and wakes the reader loop when it changed.</summary>
+    private async Task ConfigLoopAsync(CancellationToken ct)
+    {
+        if (_o.PullConfigSeconds <= 0) return;
+        await Task.Delay(TimeSpan.FromSeconds(3), ct);
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                var cfg = await _server.GetConfigAsync(ct);
+                if (cfg != null)
+                {
+                    var changed = _catalog.Apply(cfg);
+                    if (changed.Count > 0) { _log.LogInformation("Reader configuration revision {Revision}: {Count} reader(s) changed", cfg.Revision, changed.Count); if (_readerWake.CurrentCount == 0) _readerWake.Release(); }
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException) { _log.LogDebug("config pull: {Message}", ex.Message); }
+            await Task.Delay(TimeSpan.FromSeconds(Math.Max(10, _o.PullConfigSeconds)), ct);
+        }
     }
 
     private void OnTags(Guid deviceId, IReadOnlyList<LlrpTag> tags)
@@ -139,11 +167,12 @@ public sealed class EdgeAgent : BackgroundService
                     {
                         ["agent"] = _o.AgentId, ["queuePending"] = _queue.Count, ["queuePoison"] = _queue.PoisonCount, ["nextSequence"] = _queue.NextSequence,
                         ["delivered"] = _forwarder.Delivered, ["duplicates"] = _forwarder.Duplicates, ["lastError"] = _forwarder.LastError, ["lastDeliveryAt"] = _forwarder.LastDeliveryAt,
-                        ["readers"] = _o.Readers.Where(r => r.Enabled).Select(r => new { r.DeviceId, r.Host, connected = _readers.TryGetValue(r.DeviceId, out var c) && c.Connected, tags = _readers.TryGetValue(r.DeviceId, out var c2) ? c2.TagsReceived : 0 }).ToList(),
+                        ["configRevision"] = _catalog.Revision,
+                        ["readers"] = _catalog.Current().Select(r => new { r.DeviceId, r.Host, connected = _readers.TryGetValue(r.DeviceId, out var c) && c.client.Connected, tags = _readers.TryGetValue(r.DeviceId, out var c2) ? c2.client.TagsReceived : 0 }).ToList(),
                     },
                 };
                 await _server.HeartbeatAsync(null, metrics, ct);
-                foreach (var (id, c) in _readers) await _server.HeartbeatAsync(id, new { firmwareVersion = c.Capabilities?.Firmware, metrics = new Dictionary<string, object?> { ["tagsReceived"] = c.TagsReceived, ["connectedAt"] = c.ConnectedAt, ["transport"] = "edge-llrp", ["agent"] = _o.AgentId } }, ct);
+                foreach (var (id, c) in _readers) await _server.HeartbeatAsync(id, new { firmwareVersion = c.client.Capabilities?.Firmware, metrics = new Dictionary<string, object?> { ["tagsReceived"] = c.client.TagsReceived, ["connectedAt"] = c.client.ConnectedAt, ["transport"] = "edge-llrp", ["agent"] = _o.AgentId } }, ct);
             }
             catch (Exception ex) when (ex is not OperationCanceledException) { _log.LogDebug("heartbeat: {Message}", ex.Message); }
             await Task.Delay(TimeSpan.FromSeconds(Math.Max(10, _o.HeartbeatSeconds)), ct);

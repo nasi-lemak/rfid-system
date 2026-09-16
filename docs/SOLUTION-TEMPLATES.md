@@ -192,6 +192,18 @@ vocabulary:
 | `medical-assets` | `Sterilise` | `SetState`, `Move{optional}`, `SetAttribute{lastSterilisedAt: {now}}` | `Decontaminated → Sterilised` (+1 cycle) |
 | `tool-tracking` | `Calibrate` | `RecordInspection`, `SetAttribute{calibrated: true}`, `SetAttribute{calibratedAt: {now}}` | — |
 
+### Template-defined workflows
+
+Templates can also ship **workflows** — ordered operation steps with prompts that the handheld runs
+as a guided task. Each step is an ordinary operation stamped with the run id, so progress is audited
+through operations and works offline.
+
+| Template | Workflow | Steps |
+|---|---|---|
+| `medical-assets` | CSSD reprocessing | Return (dirty trays) → Decontaminate (rescan) → Sterilise (rescan, asks sterile store) |
+| `tool-tracking` | Tool return & check | Return (asks crib location) → Inspect (asks Passed/Failed, continues on rejects) → Calibrate (optional, rescan) |
+| `linen-laundry` | Wash cycle | ProcessStage → InWash (asks state) → ProcessStage → Clean (asks state + shelf, rescan) |
+
 Installing a template installs its operations for the tenant (idempotently; existing tenants are
 synced on startup). They appear in the web and handheld operation pickers with fields derived
 from their definition, and history records the operation code (`definitionCode`). Tenants can add

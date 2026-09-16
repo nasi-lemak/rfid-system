@@ -24,14 +24,7 @@ public class LlrpReaderService : BackgroundService
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, (LlrpClient client, string host)> _clients = new();
     public LlrpReaderService(IServiceScopeFactory scopes, ILogger<LlrpReaderService> log, IConfiguration cfg) { _scopes = scopes; _log = log; _cfg = cfg; }
 
-    public static LlrpReaderOptions OptionsFor(Device d)
-    {
-        var c = d.Config;
-        double? Dbl(string k) => c.TryGetValue(k, out var v) && double.TryParse(v?.ToString(), out var x) ? x : null;
-        int? Int(string k) => c.TryGetValue(k, out var v) && int.TryParse(v?.ToString(), out var x) ? x : null;
-        var ants = c.TryGetValue("llrpAntennas", out var a) && a != null ? a.ToString()!.Trim('[', ']').Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(x => ushort.TryParse(x, out var u) ? u : (ushort)0).Where(u => u > 0).ToArray() : null;
-        return new LlrpReaderOptions { TransmitPowerDbm = Dbl("llrpPower"), Session = Int("llrpSession") ?? 1, TagPopulation = Int("llrpTagPopulation") ?? 32, AntennaIds = ants, GpiStartPort = Int("llrpGpiStart"), ReportEveryNTags = Int("llrpReportEveryN") ?? 1 };
-    }
+    public static LlrpReaderOptions OptionsFor(Device d) => Rfid.Application.Devices.LlrpDeviceConfig.Options(d);
 
     public record ReaderStatus(Guid DeviceId, string Endpoint, bool Connected, DateTime? ConnectedAt, long TagsReceived, ReaderCapabilities? Capabilities, LlrpReaderOptions Options);
     public IEnumerable<ReaderStatus> Statuses() => _clients.Select(kv => new ReaderStatus(kv.Key, kv.Value.host, kv.Value.client.Connected, kv.Value.client.ConnectedAt, kv.Value.client.TagsReceived, kv.Value.client.Capabilities, kv.Value.client.Options)).ToList();
@@ -40,15 +33,8 @@ public class LlrpReaderService : BackgroundService
     /// <summary>Drops the connection so the supervisor reconnects with fresh configuration.</summary>
     public async Task ReconnectAsync(Guid deviceId) { if (_clients.Remove(deviceId, out var c)) await c.client.StopAsync(); }
 
-    public static (string host, int port)? Endpoint(Device d)
-    {
-        if (!d.Config.TryGetValue("llrpHost", out var h) || string.IsNullOrWhiteSpace(h?.ToString())) return null;
-        if (d.Config.TryGetValue("llrpEnabled", out var en) && en?.ToString()?.Equals("false", StringComparison.OrdinalIgnoreCase) == true) return null;
-        // A reader driven by an on-site edge agent is never also driven from the server.
-        if (d.Config.TryGetValue("edgeManaged", out var em) && em?.ToString()?.Equals("true", StringComparison.OrdinalIgnoreCase) == true) return null;
-        var port = d.Config.TryGetValue("llrpPort", out var p) && int.TryParse(p?.ToString(), out var pi) ? pi : 5084;
-        return (h!.ToString()!, port);
-    }
+    /// <summary>Server-driven endpoint: a reader driven by an on-site edge agent is never also driven from the server.</summary>
+    public static (string host, int port)? Endpoint(Device d) => Rfid.Application.Devices.LlrpDeviceConfig.IsEdgeManaged(d) ? null : Rfid.Application.Devices.LlrpDeviceConfig.Endpoint(d);
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {

@@ -66,6 +66,17 @@ Environment form: `Edge__Server__Url`, `Edge__Server__DeviceToken`, `Edge__Reade
 4. **Run it**: `dotnet run --project src/backend/Rfid.Edge`, or the container
    (`docker compose --profile edge up` uses `src/backend/Dockerfile.edge`; mount `/queue`).
 
+## Central reader configuration
+
+With `PullConfigSeconds` > 0 (default 60) the agent pulls `GET /api/edge/config` with its gateway
+token: every reader whose device has *Driven by an on-site edge agent* and this gateway selected
+(`edgeGatewayId`) is returned with its LLRP options (`llrpHost`, `llrpPort`, `llrpPower`,
+`llrpSession`, `llrpTagPopulation`, `llrpAntennas`, `llrpGpiStart`, `llrpEnabled`). The response
+carries a content `revision`; the agent re-applies only when it changes, reconnects only the readers
+whose options differ, disconnects readers no longer assigned, and stores the configuration in
+`<queue>/config.json` so an offline restart keeps driving the same readers. The local `Readers` list
+is the baseline used until the first successful pull (or always, with `PullConfigSeconds: 0`).
+
 ## Reader pushes
 
 With `Listen` set, readers that push HTTP (Impinj IoT Interface, Zebra IoT Connector, or any JSON

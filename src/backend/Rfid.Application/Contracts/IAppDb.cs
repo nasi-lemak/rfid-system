@@ -53,6 +53,7 @@ public interface IAppDb
     DbSet<MaintenanceForecast> MaintenanceForecasts { get; }
     DbSet<EpcisCapture> EpcisCaptures { get; }
     DbSet<OperationDefinition> OperationDefinitions { get; }
+    DbSet<WorkflowDefinition> Workflows { get; }
     DbSet<OutboxMessage> Outbox { get; }
     DbSet<IdempotencyKey> IdempotencyKeys { get; }
     Task<int> SaveChangesAsync(CancellationToken ct = default);

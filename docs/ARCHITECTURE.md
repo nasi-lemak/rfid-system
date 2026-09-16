@@ -28,7 +28,8 @@ primitives**; the platform never executes tenant-supplied code.
 | **Operation** | A business transaction with lines. Its behaviour is an **Operation Definition**: a named composition of built-in **effects** with requirements (§5) | Receive, Issue, Sterilise, Calibrate |
 | **Event** | Append-only history per item (`item_events`): the chain of custody | Moved, CustodyChanged, StateChanged, Counted, Packed … |
 | **Rule / Alert** | `when <event type> and <conditions> → <action>` with a fixed field vocabulary and a closed action set | Zone exit while checked out → critical alert |
-| **Solution Template** | JSON preset that provisions item types, lifecycles, rules and **operation definitions** for a vertical | Hospital Linen, Evidence, Tool Crib, Medical Assets |
+| **Workflow** | An ordered list of operation definitions with prompts and per-step inputs; every step runs as an ordinary operation stamped with a run id, so progress and audit are the operations themselves and offline execution uses the same queue | CSSD reprocessing, wash cycle, tool return & check |
+| **Solution Template** | JSON preset that provisions item types, lifecycles, rules, **operation definitions** and **workflows** for a vertical | Hospital Linen, Evidence, Tool Crib, Medical Assets |
 
 Everything else in the platform (presence, RTLS, billing, EPCIS, anomaly detection, …) is a
 module that reads or writes these primitives.
@@ -52,9 +53,9 @@ for historical services); **folders declare ownership**:
 | `Contracts/` | Abstractions and DTOs shared by all modules | `IAppDb`, `ICurrentContext`, `ILivePublisher`, `OperationRequest`, `ReadBatchRequest` |
 | `Tracking/` | Reads → item state → events; presence | `TagResolver`, `ReadIngestionService`, `IngestAdapters`, `PresenceService` |
 | `Rtls/` | Positions from RSSI/ranges, smoothing, history | `PositionService`, `Trilateration`, `PositionSmoother` |
-| `Operations/` | Operation definitions and execution, containers, stocktakes, imports, rule-requested operations | `OperationCatalog`, `OperationDefinitions`, `OperationProcessor`, `ContainerRules`, `RunOperationOutboxHandler`/`IOperationRunner`, `StocktakeService`, `StocktakeScheduleService`, `ImportService` |
+| `Operations/` | Operation definitions and execution, workflows, containers, stocktakes, imports, rule-requested operations | `OperationCatalog`, `OperationDefinitions`, `OperationProcessor`, `WorkflowCatalog`/`WorkflowService`, `ContainerRules`, `RunOperationOutboxHandler`/`IOperationRunner`, `StocktakeService`, `StocktakeScheduleService`, `ImportService` |
 | `Rules/` | Event and schedule rules, alerts, notification routing, anomaly detection | `RuleEngine` (`EvaluateAsync`, `EvaluateScheduledAsync`), `NotificationService`, `AnomalyService` |
-| `Devices/` | Reader health, firmware (protocol clients live in `Rfid.Protocols`) | `DeviceHealthService` |
+| `Devices/` | Reader health, firmware, edge configuration (protocol clients live in `Rfid.Protocols`) | `DeviceHealthService`, `LlrpDeviceConfig`, `EdgeConfigService` |
 | `Encoding/` | GS1 encoding, serial pools, labels, print queue | `EncodingService`, `LabelService`, `LabelDesign`, `PrintQueueService` |
 | `Integrations/` | Outbound ERP/BI delivery (via the outbox), EPCIS, warehouse export | `IntegrationService`, `IntegrationOutboxHandler`, `PayloadFormatters`, `EpcisService`, `WarehouseExportService` |
 | `Billing/` | Custody events → ledger → invoices | `BillingService` |
@@ -155,6 +156,14 @@ disposed containers cannot receive items; moving a container moves the subtree.
 **Lifecycles** are enforced everywhere state is written: operations, `RuleAction.SetState` and
 manual edits all refuse states the type does not know.
 
+**Workflows** (`WorkflowDefinition { code, steps[{ key, title, prompt, operation, ask[], fixed{}, rescan, optional, onRejected }] }`)
+are guided multi-step tasks. There is no workflow engine: the handheld runs each step as an
+operation carrying `workflowRunId`, `workflowCode` and `workflowStep` (columns on `operations`),
+with `clientId = run:step` for idempotency. Progress, completion and audit are derived from the
+operations (`WorkflowService.RunsAsync`), so a run survives offline gaps through the ordinary
+queue. Templates ship workflows (validated against the operations they reference); tenants edit
+them and pin step inputs (`fixed`) to their own locations, parties and states.
+
 ## 6. Tracking pipeline
 
 ```
@@ -187,7 +196,9 @@ ingest contract), shared by two hosts:
   reliable link — one connection owner per reader, coordinated by leases;
 - the **edge agent** (`Rfid.Edge`, see `EDGE-AGENT.md`) for sites that must survive WAN loss: it
   drives readers locally, queues batches on disk and forwards them with `batchId = agent:seq`.
-  Readers marked `edgeManaged` are skipped by the server's supervisor.
+  Readers marked `edgeManaged` are skipped by the server's supervisor; readers assigned to a
+  gateway (`edgeGatewayId`) are pulled by that agent from `GET /api/edge/config` as a versioned
+  desired configuration (`EdgeConfigService`), so reader settings are managed centrally.
 
 Nothing downstream depends on where the reads came from.
 
@@ -234,8 +245,9 @@ Two independent layers isolate tenants:
 `tenantCode` and refuses an e-mail that exists in more than one tenant.
 
 **Site RBAC** (`ISiteAccess`): users may be restricted to site subtrees with a role per site;
-items, locations, devices, alerts, events, raw reads and operation/stocktake writes (single and
-batch) are filtered/enforced by `Path`.
+items, locations, devices, alerts, events, raw reads, presence (zones, muster, timing), positions
+(floor plans, heat maps, history) and operation/stocktake writes (single and batch) are
+filtered/enforced by `Path`. Reports, dashboards and analytics remain tenant-wide aggregates.
 
 **Portals**: party-scoped read-only principals see only `/api/portal/*`.
 

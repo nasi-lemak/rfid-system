@@ -13,6 +13,7 @@ import Stocktakes from './pages/Stocktakes';
 import StocktakeDetail from './pages/StocktakeDetail';
 import Alerts from './pages/Alerts';
 import Rules from './pages/Rules';
+import Workflows from './pages/Workflows';
 import Devices from './pages/Devices';
 import Live from './pages/Live';
 import Templates from './pages/Templates';
@@ -57,6 +58,7 @@ export default function App() {
         <Route path="stocktakes/:id" element={<StocktakeDetail />} />
         <Route path="alerts" element={<Alerts />} />
         <Route path="rules" element={<Rules />} />
+        <Route path="workflows" element={<Workflows />} />
         <Route path="devices" element={<Devices />} />
         <Route path="live" element={<Live />} />
         <Route path="events" element={<Events />} />

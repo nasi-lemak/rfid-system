@@ -11,6 +11,7 @@ public class ProvisionResult
     public int ItemTypesCreated { get; set; }
     public int RulesCreated { get; set; }
     public int OperationsCreated { get; set; }
+    public int WorkflowsCreated { get; set; }
     public int Skipped { get; set; }
 }
 
@@ -43,7 +44,7 @@ public class TemplateProvisioner
         {
             if (tpl.Definition.ItemTypes.Count == 0 || !tpl.Definition.ItemTypes.All(t => codes.Contains(t.Code))) continue;
             var r = await ApplyDefinitionAsync(tpl.Code, tpl.Vertical, tpl.Definition, ct);
-            if (r.ItemTypesCreated + r.RulesCreated + r.OperationsCreated > 0) results.Add(r);
+            if (r.ItemTypesCreated + r.RulesCreated + r.OperationsCreated + r.WorkflowsCreated > 0) results.Add(r);
         }
         return results;
     }
@@ -59,6 +60,8 @@ public class TemplateProvisioner
             Operations = Enum.GetValues<OperationType>().ToList(),
             OperationDefinitions = (await _db.OperationDefinitions.Where(d => !d.IsBuiltIn).OrderBy(d => d.Code).ToListAsync(ct))
                 .Select(d => new OperationDefinition { Code = d.Code, Name = d.Name, Description = d.Description, BaseType = d.BaseType, EventType = d.EventType, Effects = d.Effects, Requires = d.Requires, EventData = d.EventData, ItemTypeCodes = d.ItemTypeCodes, Enabled = d.Enabled, Icon = d.Icon }).ToList(),
+            Workflows = (await _db.Workflows.OrderBy(w => w.Code).ToListAsync(ct))
+                .Select(w => new WorkflowDefinition { Code = w.Code, Name = w.Name, Description = w.Description, Enabled = w.Enabled, Icon = w.Icon, ItemTypeCodes = w.ItemTypeCodes, Steps = w.Steps.Select(s => new WorkflowStep { Key = s.Key, Title = s.Title, Prompt = s.Prompt, Operation = s.Operation, Ask = s.Ask, Rescan = s.Rescan, Optional = s.Optional, OnRejected = s.OnRejected }).ToList() }).ToList(),
         };
     }
 
@@ -112,6 +115,25 @@ public class TemplateProvisioner
                 ItemTypeCodes = d.ItemTypeCodes.Count > 0 ? d.ItemTypeCodes : tpl.Definition.ItemTypes.Select(t => t.Code).ToList(),
             });
             result.OperationsCreated++;
+        }
+        // Guided workflows: ordered operation definitions with prompts. Validated against the template's and the tenant's operations.
+        if (tpl.Definition.Workflows.Count > 0)
+        {
+            var existingWf = await _db.Workflows.Select(w => w.Code).ToListAsync(ct);
+            var knownOps = Operations.OperationCatalog.BuiltIn.Concat(tpl.Definition.OperationDefinitions).Concat(await _db.OperationDefinitions.ToListAsync(ct)).Concat(_db.OperationDefinitions.Local).ToList();
+            foreach (var w in tpl.Definition.Workflows)
+            {
+                if (existingWf.Contains(w.Code, StringComparer.OrdinalIgnoreCase)) { result.Skipped++; continue; }
+                var errors = Operations.WorkflowCatalog.Validate(w, knownOps);
+                if (errors.Count > 0) throw new DomainException($"Template workflow '{w.Code}' is invalid: {string.Join("; ", errors)}");
+                _db.Workflows.Add(new WorkflowDefinition
+                {
+                    TenantId = _ctx.TenantId, Code = w.Code, Name = w.Name, Description = w.Description, Enabled = w.Enabled, Icon = w.Icon, Vertical = tpl.Vertical,
+                    ItemTypeCodes = w.ItemTypeCodes.Count > 0 ? w.ItemTypeCodes : tpl.Definition.ItemTypes.Select(t => t.Code).ToList(),
+                    Steps = w.Steps.Select(s => new WorkflowStep { Key = s.Key, Title = s.Title, Prompt = s.Prompt, Operation = s.Operation, Ask = s.Ask, Fixed = new(), Rescan = s.Rescan, Optional = s.Optional, OnRejected = s.OnRejected }).ToList(),
+                });
+                result.WorkflowsCreated++;
+            }
         }
         await _db.SaveChangesAsync(ct);
         return result;

@@ -12,6 +12,8 @@ public class EdgeOptions
     /// <summary>Optional HTTP listener for reader push formats (Impinj IoT Interface, Zebra IoT Connector, generic JSON), e.g. http://0.0.0.0:8090/.</summary>
     public string? Listen { get; set; }
     public int HeartbeatSeconds { get; set; } = 60;
+    /// <summary>How often to pull the desired reader configuration from the platform (readers assigned to this gateway); 0 disables and only the local Readers list is used.</summary>
+    public int PullConfigSeconds { get; set; } = 60;
 
     public class ServerOptions
     {

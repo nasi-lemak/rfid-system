@@ -20,6 +20,10 @@ public class OperationRequest
     public DateTime? OccurredAt { get; set; }
     /// <summary>Client-generated idempotency key (offline handhelds retry).</summary>
     public string? ClientId { get; set; }
+    /// <summary>Guided workflow context: the run this operation is a step of (client-generated run id), the workflow code and the step key.</summary>
+    public string? WorkflowRunId { get; set; }
+    public string? WorkflowCode { get; set; }
+    public string? WorkflowStep { get; set; }
     public List<OperationLineRequest> Lines { get; set; } = new();
 }
 

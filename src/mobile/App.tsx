@@ -12,6 +12,8 @@ import LookupScreen from './src/screens/LookupScreen';
 import LocateScreen from './src/screens/LocateScreen';
 import StocktakeScreen from './src/screens/StocktakeScreen';
 import OperationScreen from './src/screens/OperationScreen';
+import WorkflowsScreen from './src/screens/WorkflowsScreen';
+import WorkflowRunScreen from './src/screens/WorkflowRunScreen';
 import CommissionScreen from './src/screens/CommissionScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import FloorPlanScreen from './src/screens/FloorPlanScreen';
@@ -27,6 +29,8 @@ export type RootStackParamList = {
   Locate: { epc?: string; name?: string } | undefined;
   Stocktake: undefined;
   Operation: { epcs?: string[]; type?: string } | undefined;
+  Workflows: undefined;
+  WorkflowRun: { code: string };
   Commission: { epc?: string } | undefined;
   FloorPlan: { locationId?: string; itemId?: string } | undefined;
   Geofences: undefined;
@@ -58,6 +62,8 @@ export default function App() {
                 <Stack.Screen name="Locate" component={LocateScreen} />
                 <Stack.Screen name="Stocktake" component={StocktakeScreen} />
                 <Stack.Screen name="Operation" component={OperationScreen} options={{ title: 'Operation' }} />
+                <Stack.Screen name="Workflows" component={WorkflowsScreen} options={{ title: 'Workflows' }} />
+                <Stack.Screen name="WorkflowRun" component={WorkflowRunScreen} options={{ title: 'Guided workflow' }} />
                 <Stack.Screen name="Commission" component={CommissionScreen} options={{ title: 'Commission tags' }} />
                 <Stack.Screen name="FloorPlan" component={FloorPlanScreen} options={{ title: translate(settings.language ?? 'en', 'Floor plan') }} />
                 <Stack.Screen name="Barcode" component={BarcodeScanScreen} options={{ title: 'Barcode scan' }} />

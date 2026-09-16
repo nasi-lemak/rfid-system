@@ -20,6 +20,10 @@ public class Operation : TenantEntity
     public string? DefinitionCode { get; set; }
     /// <summary>Client-generated idempotency key (offline handheld queues, edge agents).</summary>
     public string? ClientId { get; set; }
+    /// <summary>Set when the operation is a step of a guided workflow run (see WorkflowDefinition).</summary>
+    public string? WorkflowRunId { get; set; }
+    public string? WorkflowCode { get; set; }
+    public string? WorkflowStep { get; set; }
     public List<OperationLine> Lines { get; set; } = new();
 }
 

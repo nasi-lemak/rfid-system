@@ -262,11 +262,23 @@ decisions and the re-assessed roadmap are in
 - **EPCIS vocabulary as definition data** — built-in and template operations declare their CBV
   bizStep/disposition; capture maps steps back to definitions.
 
+## v2.2 — guided workflows and central reader configuration
+
+- **Workflows** — templates and tenants define guided multi-step tasks (CSSD reprocessing, wash
+  cycle, tool return & check) as ordered operation definitions with prompts and per-step inputs.
+  The handheld runs them step by step; every step is an ordinary operation stamped with the run id,
+  so runs work offline through the same queue and the web shows run history derived from operations.
+- **Edge configuration pull** — readers assigned to a gateway are pulled by the agent as a versioned
+  desired configuration; only changed readers reconnect; the last configuration survives offline
+  restarts.
+- **Site RBAC** extended to presence, floor plans, heat maps and position history.
+
 ## Roadmap
 
 Re-assessed from first principles in [`docs/ARCHITECTURE-REVIEW.md`](docs/ARCHITECTURE-REVIEW.md) §7.
 Foundation items shipped in v2.1 (edge agent, integrations on the outbox, schedule rules +
-`RunOperation`, EPCIS bizStep as data). Near-term: guided **workflows** as ordered operation definitions, device configuration management,
+`RunOperation`, EPCIS bizStep as data); v2.2 delivered guided workflows and edge configuration pull.
+Near-term: guided **workflows** as ordered operation definitions, device configuration management,
 analytics consolidation. Long-term modules: WMS stock balances as an event projection, vendor
 RTLS position ingest (UWB TDoA / BLE AoA engines), 3D digital-twin views, signed template
 marketplace, native partitioning of high-volume tables.

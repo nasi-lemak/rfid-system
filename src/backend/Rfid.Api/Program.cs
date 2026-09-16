@@ -63,6 +63,8 @@ builder.Services.AddScoped<TagResolver>();
 builder.Services.AddScoped<RuleEngine>(sp => new RuleEngine(sp.GetRequiredService<IAppDb>(), sp.GetRequiredService<ICurrentContext>(), sp.GetRequiredService<ILivePublisher>(), sp.GetRequiredService<IWebhookDispatcher>(), sp.GetRequiredService<NotificationService>(), sp.GetRequiredService<Rfid.Application.Platform.Outbox>()));
 builder.Services.AddScoped<Rfid.Application.Operations.OperationDefinitions>();
 builder.Services.AddScoped<OperationProcessor>();
+builder.Services.AddScoped<Rfid.Application.Operations.WorkflowService>();
+builder.Services.AddScoped<Rfid.Application.Devices.EdgeConfigService>();
 builder.Services.AddScoped<StocktakeService>();
 builder.Services.AddScoped<ReadIngestionService>();
 builder.Services.AddScoped<TemplateProvisioner>();

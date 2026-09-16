@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Rfid.Application.Contracts;
+using Rfid.Application.Security;
 using Rfid.Application.Services;
 using Rfid.Application.Templates;
 using Rfid.Domain;
@@ -20,14 +21,22 @@ public class PresenceController : ControllerBase
     public PresenceController(PresenceService svc, AppDbContext db) { _svc = svc; _db = db; }
 
     /// <summary>Live zone occupancy (open presence sessions), optionally restricted to a location subtree.</summary>
-    [HttpGet("zones")] public async Task<IActionResult> Zones(Guid? under, CancellationToken ct) => Ok(await _svc.OccupancyAsync(under, ct));
+    [HttpGet("zones")]
+    public async Task<IActionResult> Zones(Guid? under, [FromServices] ISiteAccess sites, [FromServices] AppDbContext db, CancellationToken ct)
+    {
+        var zones = await _svc.OccupancyAsync(under, ct);
+        var paths = await sites.AllowedPathsAsync(ct);
+        if (paths == null) return Ok(zones);
+        var allowed = (await SiteAccess.Filter(db.Locations, paths).Select(l => l.Id).ToListAsync(ct)).ToHashSet();
+        return Ok(zones.Where(z => allowed.Contains(z.LocationId)).ToList());
+    }
 
     /// <summary>Emergency muster roll-call for a site: accounted (at a muster point) vs unaccounted.</summary>
-    [HttpGet("muster")] public async Task<IActionResult> Muster(Guid siteId, CancellationToken ct) => Ok(await _svc.MusterAsync(siteId, ct));
+    [HttpGet("muster")] public async Task<IActionResult> Muster(Guid siteId, [FromServices] ISiteAccess sites, CancellationToken ct) { await sites.EnsureAsync(siteId, UserRole.Viewer, ct); return Ok(await _svc.MusterAsync(siteId, ct)); }
 
     /// <summary>Checkpoint timing (race / process stage) under an event location.</summary>
     [HttpGet("timing")]
-    public async Task<IActionResult> Timing(Guid eventLocationId, CancellationToken ct) { var (cps, rows) = await _svc.TimingAsync(eventLocationId, ct); return Ok(new { checkpoints = cps, rows }); }
+    public async Task<IActionResult> Timing(Guid eventLocationId, [FromServices] ISiteAccess sites, CancellationToken ct) { await sites.EnsureAsync(eventLocationId, UserRole.Viewer, ct); var (cps, rows) = await _svc.TimingAsync(eventLocationId, ct); return Ok(new { checkpoints = cps, rows }); }
 
     [HttpGet("items/{itemId:guid}")]
     public async Task<IActionResult> History(Guid itemId, int take = 50) => Ok(await _db.PresenceSessions.Where(p => p.ItemId == itemId).OrderByDescending(p => p.EnteredAt).Take(take).ToListAsync());

@@ -62,6 +62,7 @@ public class OperationProcessor
             TenantId = _ctx.TenantId, Type = def.BaseType, DefinitionCode = def.Code, FromLocationId = from?.Id, ToLocationId = to?.Id,
             PartyId = party?.Id, ContainerItemId = container?.Id, TargetState = req.TargetState,
             Reference = req.Reference, Notes = req.Notes, ClientId = string.IsNullOrEmpty(req.ClientId) ? null : req.ClientId,
+            WorkflowRunId = string.IsNullOrWhiteSpace(req.WorkflowRunId) ? null : req.WorkflowRunId.Trim(), WorkflowCode = string.IsNullOrWhiteSpace(req.WorkflowCode) ? null : req.WorkflowCode.Trim(), WorkflowStep = string.IsNullOrWhiteSpace(req.WorkflowStep) ? null : req.WorkflowStep.Trim(),
             DeviceId = req.DeviceId ?? _ctx.DeviceId, UserId = _ctx.UserId, StartedAt = now, DueBackAt = req.DueBackAt,
         };
         _db.Operations.Add(op);

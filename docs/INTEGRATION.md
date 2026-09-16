@@ -113,6 +113,31 @@ Per-endpoint filters: `eventTypes` (none = all), `itemTypeCodes` (none = all), `
 cursor, the in-flight outbox message, failure count and last error; `POST /api/integrations/{id}/deliver`
 builds the next batch and pushes the outbox immediately.
 
+## Workflows
+
+`GET /api/workflows` lists the guided workflows (template-shipped and tenant-defined); Admins manage
+them with `POST/PUT/DELETE /api/workflows`. A step is `{ key, title, prompt, operation, ask[],
+fixed{toLocationId, partyId, targetState, containerItemId, reference}, rescan, optional, onRejected }`.
+Clients execute a run by posting each step as an ordinary operation:
+
+```json
+POST /api/operations
+{ "operation": "Sterilise", "workflowRunId": "wf-…", "workflowCode": "cssd-reprocess", "workflowStep": "sterilise",
+  "clientId": "wf-…:sterilise", "toLocationId": "…", "lines": [{ "epc": "3034…" }] }
+```
+
+`GET /api/workflows/runs` groups operations by run id (steps done, ok/rejected lines, completed);
+`GET /api/workflows/runs/{runId}` returns the steps and lines. Because steps are operations, runs
+work offline through the handheld queue and are idempotent per step.
+
+## Edge configuration pull
+
+An edge agent authenticated with its gateway device token calls `GET /api/edge/config` and receives
+the readers assigned to it (`edgeManaged: true`, `edgeGatewayId: <gateway>`) with their LLRP
+options and a content `revision`; the agent reconnects only readers whose options changed and keeps
+the last configuration on disk for offline restarts. Administrators can inspect a gateway's
+configuration with `GET /api/edge/config?gatewayId=…`.
+
 ## Rules: schedules and operations
 
 Rules have a `kind`. **Event** rules react to one item event (trigger = event type). **Schedule**

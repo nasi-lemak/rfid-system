@@ -13,6 +13,8 @@ public interface IServerClient
 {
     Task<(PostOutcome outcome, IngestResult? result, string? error)> PostBatchAsync(ReadBatchRequest batch, CancellationToken ct);
     Task HeartbeatAsync(Guid? deviceId, object metrics, CancellationToken ct);
+    /// <summary>Desired reader configuration for this gateway, or null when the server does not know the gateway.</summary>
+    Task<EdgeConfig?> GetConfigAsync(CancellationToken ct);
 }
 
 /// <summary>Device-token authentication (<c>POST /api/auth/device</c>) with automatic re-login on 401.</summary>
@@ -60,6 +62,14 @@ public sealed class HttpServerClient : IServerClient
             return (PostOutcome.Retry, null, $"{(int)res.StatusCode} {text}");
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException) { return (PostOutcome.Retry, null, ex.Message); }
+    }
+
+    public async Task<EdgeConfig?> GetConfigAsync(CancellationToken ct)
+    {
+        using var res = await SendAsync(() => new HttpRequestMessage(HttpMethod.Get, "api/edge/config"), ct);
+        if (res.StatusCode == HttpStatusCode.NotFound) return null;
+        res.EnsureSuccessStatusCode();
+        return await res.Content.ReadFromJsonAsync<EdgeConfig>(Json, ct);
     }
 
     public async Task HeartbeatAsync(Guid? deviceId, object metrics, CancellationToken ct)

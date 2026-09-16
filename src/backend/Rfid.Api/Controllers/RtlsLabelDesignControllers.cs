@@ -17,21 +17,22 @@ public class PositionsController : ControllerBase
 
     /// <summary>Locations that have positioned antennas (anchors) – i.e. floor plans worth drawing.</summary>
     [HttpGet("floor-plans")]
-    public async Task<IActionResult> FloorPlans()
+    public async Task<IActionResult> FloorPlans([FromServices] Rfid.Application.Security.ISiteAccess sites)
     {
         var ids = await _db.Antennas.Where(a => a.X != null && a.LocationId != null).Select(a => a.LocationId!.Value).Distinct().ToListAsync();
-        var locs = await _db.Locations.Where(l => ids.Contains(l.Id)).OrderBy(l => l.Name).ToListAsync();
+        var locs = await Rfid.Application.Security.SiteAccess.Filter(_db.Locations.Where(l => ids.Contains(l.Id)), await sites.AllowedPathsAsync()).OrderBy(l => l.Name).ToListAsync();
         return Ok(locs.Select(l => new { l.Id, l.Name, l.Kind, Bounds = PositionService.Bounds(l) is { } b ? new { w = b.w, h = b.h } : null }));
     }
 
     /// <summary>Anchors and last-known item positions inside a location (maxAgeMinutes default 720).</summary>
     [HttpGet("floor-plans/{locationId:guid}")]
-    public async Task<IActionResult> FloorPlan(Guid locationId, int maxAgeMinutes = 720, CancellationToken ct = default) => Ok(await _svc.FloorPlanAsync(locationId, TimeSpan.FromMinutes(maxAgeMinutes), ct));
+    public async Task<IActionResult> FloorPlan(Guid locationId, [FromServices] Rfid.Application.Security.ISiteAccess sites, int maxAgeMinutes = 720, CancellationToken ct = default) { await sites.EnsureAsync(locationId, Rfid.Domain.UserRole.Viewer, ct); return Ok(await _svc.FloorPlanAsync(locationId, TimeSpan.FromMinutes(maxAgeMinutes), ct)); }
 
     /// <summary>Dwell-time heat map for a floor plan: seconds spent per grid cell in the window (default last 24h, 1 m cells).</summary>
     [HttpGet("heatmap")]
-    public async Task<IActionResult> HeatMap(Guid locationId, DateTime? from, DateTime? to, double cellM = 1.0, CancellationToken ct = default)
+    public async Task<IActionResult> HeatMap(Guid locationId, [FromServices] Rfid.Application.Security.ISiteAccess sites, DateTime? from, DateTime? to, double cellM = 1.0, CancellationToken ct = default)
     {
+        await sites.EnsureAsync(locationId, Rfid.Domain.UserRole.Viewer, ct);
         var t = to ?? DateTime.UtcNow; var f = from ?? t.AddHours(-24);
         return Ok(await _svc.HeatMapAsync(locationId, f, t, Math.Clamp(cellM, 0.25, 20), ct));
     }
@@ -48,8 +49,9 @@ public class PositionsController : ControllerBase
 
     /// <summary>Items that have recorded fixes in a location during the window – candidates for path replay.</summary>
     [HttpGet("history/items")]
-    public async Task<IActionResult> HistoryItems(Guid locationId, DateTime? from, DateTime? to, CancellationToken ct = default)
+    public async Task<IActionResult> HistoryItems(Guid locationId, [FromServices] Rfid.Application.Security.ISiteAccess sites, DateTime? from, DateTime? to, CancellationToken ct = default)
     {
+        await sites.EnsureAsync(locationId, Rfid.Domain.UserRole.Viewer, ct);
         var t = to ?? DateTime.UtcNow; var f = from ?? t.AddHours(-24);
         var rows = await _db.PositionFixes.Where(p => p.LocationId == locationId && p.At >= f && p.At <= t).GroupBy(p => p.ItemId)
             .Select(g => new { ItemId = g.Key, Fixes = g.Count(), First = g.Min(p => p.At), Last = g.Max(p => p.At) }).OrderByDescending(x => x.Fixes).Take(200).ToListAsync(ct);

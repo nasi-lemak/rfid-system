@@ -256,7 +256,8 @@ public class ScheduleIntegrationTemplateTests
         var r = await h2.Templates.ApplyDefinitionAsync("custom", "Custom", def);
         Assert.Equal(3, r.ItemTypesCreated); Assert.Equal(2, r.RulesCreated);
         var again = await h2.Templates.ApplyDefinitionAsync("custom", "Custom", def);
-        Assert.Equal(0, again.ItemTypesCreated); Assert.Equal(5, again.Skipped);
+        Assert.Equal(0, again.ItemTypesCreated); Assert.Equal(6, again.Skipped);   // 3 types + 2 rules + the wash-cycle workflow round-tripped
+        Assert.Contains(def.Workflows, w => w.Code == "wash-cycle"); Assert.Equal(1, r.WorkflowsCreated); Assert.Single(await h2.Db.Workflows.ToListAsync());
         var linen = await h2.Db.ItemTypes.FirstAsync(t => t.Code == "LINEN"); Assert.Equal(200, linen.MaxCycles); Assert.Equal("Clean", linen.Lifecycle!.Initial);
     }
 }

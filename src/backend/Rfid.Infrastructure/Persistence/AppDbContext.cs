@@ -61,6 +61,7 @@ public class AppDbContext : DbContext, IAppDb
     public DbSet<MaintenanceForecast> MaintenanceForecasts => Set<MaintenanceForecast>();
     public DbSet<EpcisCapture> EpcisCaptures => Set<EpcisCapture>();
     public DbSet<OperationDefinition> OperationDefinitions => Set<OperationDefinition>();
+    public DbSet<WorkflowDefinition> Workflows => Set<WorkflowDefinition>();
     public DbSet<OutboxMessage> Outbox => Set<OutboxMessage>();
     public DbSet<IdempotencyKey> IdempotencyKeys => Set<IdempotencyKey>();
 
@@ -180,6 +181,7 @@ public class AppDbContext : DbContext, IAppDb
             e.HasIndex(o => new { o.TenantId, o.StartedAt });
             e.HasIndex(o => o.Reference);
             e.HasIndex(o => new { o.TenantId, o.ClientId }).IsUnique().HasFilter(isNpgsql ? "\"ClientId\" IS NOT NULL" : null);
+            e.HasIndex(o => new { o.TenantId, o.WorkflowRunId });
             e.HasMany(o => o.Lines).WithOne().HasForeignKey(l => l.OperationId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<OperationDefinition>(e =>
@@ -191,6 +193,13 @@ public class AppDbContext : DbContext, IAppDb
             e.Property(d => d.Requires).HasColumnType(isNpgsql ? "jsonb" : "text").HasConversion(JsonConv<OperationRequirements>(json), JsonComparer<OperationRequirements>());
             e.Property(d => d.EventData).HasColumnType(isNpgsql ? "jsonb" : "text").HasConversion(JsonConv<Dictionary<string, object?>>(json), JsonComparer<Dictionary<string, object?>>());
             e.Property(d => d.ItemTypeCodes).HasColumnType(isNpgsql ? "jsonb" : "text").HasConversion(JsonConv<List<string>>(json), JsonComparer<List<string>>());
+        });
+        b.Entity<WorkflowDefinition>(e =>
+        {
+            e.ToTable("workflows");
+            e.HasIndex(w => new { w.TenantId, w.Code }).IsUnique();
+            e.Property(w => w.Steps).HasColumnType(isNpgsql ? "jsonb" : "text").HasConversion(JsonConv<List<WorkflowStep>>(json), JsonComparer<List<WorkflowStep>>());
+            e.Property(w => w.ItemTypeCodes).HasColumnType(isNpgsql ? "jsonb" : "text").HasConversion(JsonConv<List<string>>(json), JsonComparer<List<string>>());
         });
         b.Entity<OutboxMessage>(e => { e.ToTable("outbox"); e.HasIndex(o => new { o.ProcessedAt, o.NextAttemptAt, o.CreatedAt }); });
         b.Entity<IdempotencyKey>(e => { e.ToTable("idempotency_keys"); e.HasIndex(k => new { k.TenantId, k.Scope, k.Key }).IsUnique(); });
